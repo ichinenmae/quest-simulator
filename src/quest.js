@@ -1,4 +1,4 @@
-import { validateSlots } from "./calculation.js";
+import { validateSlots } from "./calculation.js?v=20260615-12";
 
 export const QUEST_KINDS = { period: "期間", time: "時間帯", weather: "荒天", daily: "終日", other: "その他" };
 export const DAY_MAP = { MON:"mon", TUE:"tue", WED:"wed", THU:"thu", FRI:"fri", SAT:"sat", SUN:"sun" };

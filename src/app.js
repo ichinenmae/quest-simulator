@@ -1,8 +1,8 @@
-import { loadState, saveState, createDefaultPlan, mondayOf } from "./storage.js";
-import { planStats, dayPlanStats, periodGoalRows, recommendGoal, periodGoalBasis, projectedAdditionalRewards, weeklyPeriodProjections, weeklyQuestSummaries, weeklyDayForecasts, questIncludesPlanDay, formatCurrency, formatNumber, validateSlots, predictedQuestDeliveries } from "./calculation.js";
-import { QUEST_KINDS, questValidation, newId } from "./quest.js";
-import { parseAIText } from "./parser.js";
-import { automaticQuestTitle, dateRangeFromDays, daysFromDateRange, defaultTimesForKind } from "./quest-form.js";
+import { loadState, saveState, createDefaultPlan, mondayOf } from "./storage.js?v=20260615-12";
+import { planStats, dayPlanStats, periodGoalRows, recommendGoal, periodGoalBasis, projectedAdditionalRewards, weeklyPeriodProjections, weeklyQuestSummaries, weeklyDayForecasts, questIncludesPlanDay, formatCurrency, formatNumber, validateSlots, predictedQuestDeliveries } from "./calculation.js?v=20260615-12";
+import { QUEST_KINDS, questValidation, newId } from "./quest.js?v=20260615-12";
+import { parseAIText } from "./parser.js?v=20260615-12";
+import { automaticQuestTitle, dateRangeFromDays, daysFromDateRange, defaultTimesForKind } from "./quest-form.js?v=20260615-12";
 
 const DAY_LABELS = { mon:"月", tue:"火", wed:"水", thu:"木", fri:"金", sat:"土", sun:"日" };
 const SCREEN_TITLES = { dashboard:"今週の概要", plan:"週間計画", quests:"クエスト入力", goals:"期間クエスト選択", settings:"設定" };

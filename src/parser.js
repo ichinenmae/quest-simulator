@@ -1,4 +1,4 @@
-import { normalizeQuest, questValidation } from "./quest.js";
+import { normalizeQuest, questValidation } from "./quest.js?v=20260615-12";
 
 const META_KEYS = new Set(["QUEST_TYPE","SERVICE","TITLE","PERIOD","START_DATE","END_DATE","DAY","START","END"]);
 const REPEAT_KEYS = new Set(["REPEAT_START","REPEAT_END","REPEAT_BONUS"]);
