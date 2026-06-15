@@ -17,7 +17,7 @@ export function normalizeQuest(input, services) {
     startDate: input.startDate || null, endDate: input.endDate || null,
     startTime: input.start || null, endTime: input.end || null, daysOfWeek: days,
     milestones: (input.milestones || []).map(item => ({ count:Number(item.count), reward:Number(item.reward) })),
-    repeatBonus: input.repeatStart ? { startCount:Number(input.repeatStart), endCount:Number(input.repeatEnd), bonusPerDelivery:Number(input.repeatBonus) } : null,
+    repeatBonus: input.repeatStart ? { startCount:Number(input.repeatStart), endCount:input.repeatEnd == null || input.repeatEnd === "" ? null : Number(input.repeatEnd), bonusPerDelivery:Number(input.repeatBonus) } : null,
     selectedGoalCount: null, notes: ""
   };
 }
@@ -43,7 +43,7 @@ export function questValidation(quest, services) {
   if (quest.kind === "period" && !quest.daysOfWeek.length && (!quest.startDate || !quest.endDate)) warnings.push("期間の曜日または日付を設定してください。");
   if (quest.repeatBonus) {
     const r = quest.repeatBonus;
-    if (![r.startCount,r.endCount,r.bonusPerDelivery].every(Number.isFinite) || r.startCount <= 0 || r.endCount < r.startCount || r.bonusPerDelivery <= 0) errors.push("継続ボーナス設定が不正です。");
+    if (![r.startCount,r.bonusPerDelivery].every(Number.isFinite) || r.startCount <= 0 || (r.endCount != null && (!Number.isFinite(r.endCount) || r.endCount < r.startCount)) || r.bonusPerDelivery <= 0) errors.push("継続ボーナス設定が不正です。");
   }
   return { errors:[...new Set(errors)], warnings:[...new Set(warnings)] };
 }

@@ -69,6 +69,7 @@ function normalizeState(value) {
     ...defaultState(),
     ...value,
     settings: { ...defaultState().settings, ...(value.settings || {}) },
+    quests: Array.isArray(value.quests) ? value.quests.map(quest => ({ selectedGoalCount:null, selectedGoalConfirmedAt:null, ...quest })) : [],
     progress: Array.isArray(value.progress) ? value.progress : [],
     templates: Array.isArray(value.templates) ? value.templates : []
   };

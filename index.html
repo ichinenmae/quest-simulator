@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0f766e">
     <title>SumuQuest | 配達クエスト計画</title>
-    <link rel="stylesheet" href="./style.css?v=20260615-4">
+    <link rel="stylesheet" href="./style.css?v=20260615-7">
   </head>
   <body>
     <div class="app-shell">
@@ -34,10 +34,10 @@
         <section id="dashboard-screen" class="screen active">
           <div id="summary-cards" class="summary-grid"></div>
           <div class="content-grid">
-            <article class="panel hero-panel"><div class="panel-heading"><div><p class="eyebrow">RECOMMENDATION</p><h2>推奨期間クエスト</h2></div><button class="text-button" data-go="goals">詳細を見る</button></div><div id="dashboard-recommendation"></div></article>
+            <article class="panel hero-panel"><div class="panel-heading"><div><p class="eyebrow">PERIOD TARGETS</p><h2>期間クエスト目標</h2></div><button class="text-button" data-go="goals">詳細を見る</button></div><div id="dashboard-recommendation"></div></article>
             <article class="panel"><div class="panel-heading"><div><p class="eyebrow">WEEKLY PLAN</p><h2>曜日別の予定</h2></div><button class="text-button" data-go="plan">編集する</button></div><div id="dashboard-days" class="day-bars"></div></article>
           </div>
-          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">QUESTS</p><h2>登録中のクエスト</h2></div><button class="text-button" data-go="quests">追加する</button></div><div id="dashboard-quests" class="compact-list"></div></article>
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">QUESTS</p><h2>クエスト</h2></div><button class="text-button" data-go="quests">追加する</button></div><div id="dashboard-quests" class="quest-summary-list"></div></article>
         </section>
 
         <section id="plan-screen" class="screen">
@@ -75,6 +75,6 @@
     <nav class="bottom-nav" aria-label="モバイルナビゲーション">
       <button class="nav-button active" data-screen="dashboard"><span>概要</span></button><button class="nav-button" data-screen="plan"><span>計画</span></button><button class="nav-button" data-screen="quests"><span>クエスト</span></button><button class="nav-button" data-screen="goals"><span>目標</span></button><button class="nav-button" data-screen="settings"><span>設定</span></button>
     </nav>
-    <script type="module" src="./src/app.js?v=20260615-3"></script>
+    <script type="module" src="./src/app.js?v=20260615-10"></script>
   </body>
 </html>

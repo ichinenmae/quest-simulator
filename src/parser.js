@@ -37,4 +37,8 @@ function parseBlock(block, blockIndex, services) {
   return { index:blockIndex, quest, errors:[...parseErrors,...validation.errors], warnings:[...warnings,...validation.warnings] };
 }
 
-function toNumber(value) { return value === undefined ? null : Number(String(value).replaceAll(",","")); }
+function toNumber(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (["UNLIMITED","NONE","上限なし"].includes(String(value).trim().toUpperCase())) return null;
+  return Number(String(value).replaceAll(",",""));
+}

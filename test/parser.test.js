@@ -34,3 +34,9 @@ test("営業日境界を越える時間帯をエラーにする", () => {
   const result=parseAIText(`QUEST_TYPE: TIME\nSERVICE: Uber\nTITLE: 深夜\nDAY: MON\nSTART: 02:00\nEND: 05:00\n3=300`,services);
   assert.ok(result.items[0].errors.some(item=>item.includes("営業日04:00")));
 });
+
+test("上限なし継続ボーナスを解析する", () => {
+  const result=parseAIText(`QUEST_TYPE: TIME\nSERVICE: Uber\nTITLE: 全件加算\nDAY: MON\nSTART: 17:00\nEND: 21:30\nREPEAT_START=1\nREPEAT_END=UNLIMITED\nREPEAT_BONUS=100`,services);
+  assert.equal(result.items[0].errors.length,0);
+  assert.deepEqual(result.items[0].quest.repeatBonus,{startCount:1,endCount:null,bonusPerDelivery:100});
+});
