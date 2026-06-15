@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f766e">
+    <title>SumuQuest | 配達クエスト計画</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">SQ</span>
+          <div><strong>SumuQuest</strong><small>配達クエスト計画</small></div>
+        </div>
+        <nav class="nav-list" aria-label="メインナビゲーション">
+          <button class="nav-button active" data-screen="dashboard">概要</button>
+          <button class="nav-button" data-screen="plan">週間計画</button>
+          <button class="nav-button" data-screen="quests">クエスト</button>
+          <button class="nav-button" data-screen="goals">目標選択</button>
+          <button class="nav-button" data-screen="settings">設定</button>
+        </nav>
+        <div class="sidebar-note">営業日の区切り 04:00</div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div><p class="eyebrow">FOOD DELIVERY PLANNER</p><h1 id="screen-title">今週の概要</h1></div>
+          <div id="save-status" class="save-status" role="status">保存済み</div>
+        </header>
+        <div id="global-message" class="message hidden" role="alert"></div>
+
+        <section id="dashboard-screen" class="screen active">
+          <div id="summary-cards" class="summary-grid"></div>
+          <div class="content-grid">
+            <article class="panel hero-panel"><div class="panel-heading"><div><p class="eyebrow">RECOMMENDATION</p><h2>推奨期間クエスト</h2></div><button class="text-button" data-go="goals">詳細を見る</button></div><div id="dashboard-recommendation"></div></article>
+            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">WEEKLY PLAN</p><h2>曜日別の予定</h2></div><button class="text-button" data-go="plan">編集する</button></div><div id="dashboard-days" class="day-bars"></div></article>
+          </div>
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">QUESTS</p><h2>登録中のクエスト</h2></div><button class="text-button" data-go="quests">追加する</button></div><div id="dashboard-quests" class="compact-list"></div></article>
+        </section>
+
+        <section id="plan-screen" class="screen">
+          <article class="panel form-panel">
+            <div class="panel-heading"><div><p class="eyebrow">WEEK SETTINGS</p><h2>対象週とサービス</h2></div></div>
+            <div class="form-grid two"><label>週の開始日（月曜）<input id="week-start" type="date"></label><label>計画サービス<select id="plan-service"></select></label></div>
+            <p class="helper">1営業日は04:00から翌03:59です。22:00〜02:00のような深夜枠も同じ曜日に集計します。</p>
+          </article>
+          <div id="week-days" class="week-grid"></div>
+        </section>
+
+        <section id="quests-screen" class="screen">
+          <div class="tab-row" role="tablist"><button class="subtab active" data-quest-tab="ai">AIテキスト</button><button class="subtab" data-quest-tab="manual">手入力</button><button class="subtab" data-quest-tab="list">登録済み</button></div>
+          <div id="quest-tab-ai" class="quest-tab active">
+            <article class="panel form-panel"><div class="panel-heading"><div><p class="eyebrow">AI IMPORT</p><h2>抽出テキストを解析</h2></div><button id="fill-sample" class="text-button">サンプル入力</button></div><label>Gemini / ChatGPTの出力<textarea id="ai-input" rows="14" placeholder="QUEST_TYPE: PERIOD&#10;SERVICE: Uber&#10;..."></textarea></label><div class="actions"><button id="parse-ai" class="primary-button">解析する</button></div></article>
+            <div id="ai-preview"></div>
+          </div>
+          <div id="quest-tab-manual" class="quest-tab"><article class="panel form-panel"><div class="panel-heading"><div><p class="eyebrow">MANUAL ENTRY</p><h2>クエストを手入力</h2></div></div><form id="manual-quest-form"></form></article></div>
+          <div id="quest-tab-list" class="quest-tab"><div id="quest-list" class="card-list"></div></div>
+        </section>
+
+        <section id="goals-screen" class="screen">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">PERIOD QUEST</p><h2>期間クエスト選択支援</h2></div></div><div id="goal-selector"></div></article>
+          <div id="goal-recommendation"></div>
+          <article class="panel table-panel"><div id="goal-table"></div></article>
+        </section>
+
+        <section id="settings-screen" class="screen">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">SERVICES</p><h2>サービス設定</h2></div><button id="add-service" class="secondary-button">サービス追加</button></div><div id="service-settings" class="settings-list"></div></article>
+          <article class="panel form-panel"><div class="panel-heading"><div><p class="eyebrow">JUDGEMENT</p><h2>達成見込みの基準</h2></div></div><div class="form-grid two"><label>余裕件数<input id="margin-count" type="number" min="0" step="1"></label><label>許容追加時間<input id="allowed-hours" type="number" min="0" step="0.5"></label></div><div class="actions"><button id="save-settings" class="primary-button">設定を保存</button></div></article>
+        </section>
+      </main>
+    </div>
+
+    <nav class="bottom-nav" aria-label="モバイルナビゲーション">
+      <button class="nav-button active" data-screen="dashboard"><span>概要</span></button><button class="nav-button" data-screen="plan"><span>計画</span></button><button class="nav-button" data-screen="quests"><span>クエスト</span></button><button class="nav-button" data-screen="goals"><span>目標</span></button><button class="nav-button" data-screen="settings"><span>設定</span></button>
+    </nav>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

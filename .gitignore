@@ -1,0 +1,11 @@
+# Office temporary lock files
+.~lock.*#
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Local dependencies and logs
+node_modules/
+*.log
