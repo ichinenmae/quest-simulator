@@ -30,7 +30,8 @@ export function questValidation(quest, services) {
   if (!quest.milestones.length && !quest.repeatBonus) errors.push("マイルストーンまたは継続ボーナスが必要です。");
   const milestones = quest.milestones;
   milestones.forEach((item, index) => {
-    if (!Number.isFinite(item.count) || item.count <= 0 || !Number.isFinite(item.reward) || item.reward < 0) errors.push(`${index + 1}行目の件数・報酬が不正です。`);
+    if (!Number.isFinite(item.count) || item.count <= 0) errors.push(`マイルストーン${index + 1}行目の件数を1以上で入力してください。`);
+    if (!Number.isFinite(item.reward) || item.reward < 0) errors.push(`マイルストーン${index + 1}行目の累計報酬を0円以上で入力してください。`);
     if (index && item.count <= milestones[index - 1].count) errors.push("件数は昇順にしてください。");
     if (index && item.reward < milestones[index - 1].reward) errors.push("累計報酬は減少させられません。");
   });

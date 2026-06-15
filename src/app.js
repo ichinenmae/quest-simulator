@@ -2,6 +2,7 @@ import { loadState, saveState, createDefaultPlan, mondayOf } from "./storage.js"
 import { planStats, dayPlanStats, periodGoalRows, recommendGoal, formatCurrency, formatNumber, validateSlots, predictedQuestDeliveries } from "./calculation.js";
 import { QUEST_KINDS, questValidation, newId } from "./quest.js";
 import { parseAIText } from "./parser.js";
+import { automaticQuestTitle, dateRangeFromDays, daysFromDateRange, defaultTimesForKind } from "./quest-form.js";
 
 const DAY_LABELS = { mon:"月", tue:"火", wed:"水", thu:"木", fri:"金", sat:"土", sun:"日" };
 const SCREEN_TITLES = { dashboard:"今週の概要", plan:"週間計画", quests:"クエスト入力", goals:"期間クエスト選択", settings:"設定" };
@@ -31,11 +32,14 @@ END: 15:00
 let { state, recovered } = loadState();
 let currentScreen = "dashboard";
 let parsedItems = [];
+let manualDraft;
+let manualTitleEdited = false;
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const activePlan = () => state.weeklyPlans[0] || (state.weeklyPlans[0] = createDefaultPlan());
 const activeService = () => state.services.find(item => item.id === activePlan().serviceId) || state.services[0];
+manualDraft = createManualDraft();
 
 init();
 
@@ -130,13 +134,34 @@ function updateSlot(day, index, key, value) {
 }
 
 function renderManualForm() {
-  $("#manual-quest-form").innerHTML = `${questFields({ id:"manual", serviceId:activeService()?.id || "", title:"", kind:"period", startDate:"", endDate:"", startTime:"", endTime:"", daysOfWeek:[], milestones:[{count:"",reward:""}], repeatBonus:null }, "manual")}<div class="actions"><button class="primary-button" type="submit">クエストを登録</button></div>`;
-  bindQuestEditor($("#manual-quest-form"), "manual");
-  $("#manual-quest-form").addEventListener("submit", event => { event.preventDefault(); const quest = readQuestEditor(event.currentTarget); const result = questValidation(quest,state.services); if (result.errors.length) return showEditorIssues(event.currentTarget,result); state.quests.push(quest); commit("クエストを登録しました"); showMessage("クエストを登録しました。"); renderAll(); event.currentTarget.reset(); });
+  const form = $("#manual-quest-form");
+  if (form.children.length) manualDraft = readQuestEditorDraft(form);
+  form.innerHTML = `${questFields(manualDraft, "manual")}<div class="actions"><button class="primary-button" type="submit">クエストを登録</button></div>`;
+  bindQuestEditor(form, "manual");
+  bindManualComplements(form);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    manualDraft = readQuestEditorDraft(event.currentTarget);
+    const quest = readQuestEditor(event.currentTarget);
+    const result = questValidation(quest,state.services);
+    showEditorIssues(event.currentTarget,result);
+    if (result.errors.length) return;
+    state.quests.push(quest);
+    manualDraft = createManualDraft();
+    manualTitleEdited = false;
+    commit("クエストを登録しました");
+    showMessage("クエストを登録しました。");
+    renderAll();
+  });
+}
+
+function createManualDraft() {
+  const times = defaultTimesForKind("period");
+  return { id:"manual", serviceId:activeService()?.id || "", title:automaticQuestTitle("period"), kind:"period", startDate:"", endDate:"", ...times, daysOfWeek:[], milestones:[{count:"",reward:""}], repeatBonus:null };
 }
 
 function questFields(quest, prefix) {
-  return `<div class="form-grid two"><label>サービス<select data-field="serviceId">${state.services.map(item => `<option value="${esc(item.id)}" ${item.id === quest.serviceId ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></label><label>種別<select data-field="kind">${Object.entries(QUEST_KINDS).map(([key,label]) => `<option value="${key}" ${key === quest.kind ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>タイトル<input data-field="title" value="${esc(quest.title)}"></label><div><span style="display:block;margin-bottom:6px;color:var(--muted);font-size:.8rem;font-weight:700">対象曜日</span><div class="day-checks">${Object.entries(DAY_LABELS).map(([key,label]) => `<label class="day-check"><input data-field="day" type="checkbox" value="${key}" ${quest.daysOfWeek?.includes(key) ? "checked" : ""}>${label}</label>`).join("")}</div></div><label>開始日<input data-field="startDate" type="date" value="${esc(quest.startDate || "")}"></label><label>終了日<input data-field="endDate" type="date" value="${esc(quest.endDate || "")}"></label><label>開始時刻<input data-field="startTime" type="time" value="${esc(quest.startTime || "")}"></label><label>終了時刻<input data-field="endTime" type="time" value="${esc(quest.endTime || "")}"></label></div><h3 style="margin-top:18px">マイルストーン</h3><div class="milestone-editor">${quest.milestones.map((item,index) => milestoneRow(item,index)).join("")}</div><button class="secondary-button add-milestone" type="button" style="margin-top:9px">行を追加</button><h3 style="margin-top:18px">継続ボーナス（任意）</h3><div class="form-grid two"><label>開始件数<input data-field="repeatStart" type="number" min="1" value="${quest.repeatBonus?.startCount ?? ""}"></label><label>終了件数<input data-field="repeatEnd" type="number" min="1" value="${quest.repeatBonus?.endCount ?? ""}"></label><label>1件ごとの追加額<input data-field="repeatBonus" type="number" min="0" value="${quest.repeatBonus?.bonusPerDelivery ?? ""}"></label></div><div class="editor-issues"></div>`;
+  return `<div class="form-grid two"><label>サービス<select data-field="serviceId">${state.services.map(item => `<option value="${esc(item.id)}" ${item.id === quest.serviceId ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></label><label>種別<select data-field="kind">${Object.entries(QUEST_KINDS).map(([key,label]) => `<option value="${key}" ${key === quest.kind ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>タイトル<input data-field="title" value="${esc(quest.title)}"></label><div><span style="display:block;margin-bottom:6px;color:var(--muted);font-size:.8rem;font-weight:700">対象曜日</span><div class="day-checks">${Object.entries(DAY_LABELS).map(([key,label]) => `<label class="day-check"><input data-field="day" type="checkbox" value="${key}" ${quest.daysOfWeek?.includes(key) ? "checked" : ""}>${label}</label>`).join("")}</div></div><label>開始日<input data-field="startDate" type="date" value="${esc(quest.startDate || "")}"></label><label>終了日<input data-field="endDate" type="date" value="${esc(quest.endDate || "")}"></label><label>開始時刻<input data-field="startTime" type="time" value="${esc(quest.startTime || "")}"></label><label>終了時刻<input data-field="endTime" type="time" value="${esc(quest.endTime || "")}"></label></div>${prefix === "manual" ? `<div class="time-presets ${quest.kind === "time" ? "" : "hidden"}"><span>時間帯プリセット</span><button class="secondary-button time-preset" type="button" data-start="10:00" data-end="15:30">昼 10:00～15:30</button><button class="secondary-button time-preset" type="button" data-start="17:00" data-end="21:30">夜 17:00～21:30</button></div>` : ""}<h3 style="margin-top:18px">マイルストーン</h3><div class="milestone-editor">${quest.milestones.map((item,index) => milestoneRow(item,index)).join("")}</div><button class="secondary-button add-milestone" type="button" style="margin-top:9px">行を追加</button><h3 style="margin-top:18px">継続ボーナス（任意）</h3><div class="form-grid two"><label>開始件数<input data-field="repeatStart" type="number" min="1" value="${quest.repeatBonus?.startCount ?? ""}"></label><label>終了件数<input data-field="repeatEnd" type="number" min="1" value="${quest.repeatBonus?.endCount ?? ""}"></label><label>1件ごとの追加額<input data-field="repeatBonus" type="number" min="0" value="${quest.repeatBonus?.bonusPerDelivery ?? ""}"></label></div><div class="editor-issues"></div>`;
 }
 
 function milestoneRow(item,index) { return `<div class="milestone-row" data-index="${index}"><label>件数<input class="milestone-count" type="number" min="1" value="${esc(item.count)}"></label><label>累計報酬<input class="milestone-reward" type="number" min="0" value="${esc(item.reward)}"></label><button class="icon-button remove-milestone" type="button" aria-label="行を削除">×</button></div>`; }
@@ -145,14 +170,66 @@ function bindQuestEditor(container) {
   container.querySelector(".add-milestone").addEventListener("click", () => { const editor = container.querySelector(".milestone-editor"); editor.insertAdjacentHTML("beforeend",milestoneRow({count:"",reward:""},editor.children.length)); bindMilestoneRemovers(container); });
   bindMilestoneRemovers(container);
 }
+
+function bindManualComplements(container) {
+  const field = name => container.querySelector(`[data-field="${name}"]`);
+  const selectedDays = () => [...container.querySelectorAll('[data-field="day"]:checked')].map(input => input.value);
+  const refreshTitle = () => { if (!manualTitleEdited) field("title").value = automaticQuestTitle(field("kind").value, selectedDays()); };
+  field("title").addEventListener("input", () => { manualTitleEdited = field("title").value !== automaticQuestTitle(field("kind").value, selectedDays()); });
+  field("kind").addEventListener("change", () => {
+    const times = defaultTimesForKind(field("kind").value);
+    field("startTime").value = times.startTime;
+    field("endTime").value = times.endTime;
+    container.querySelector(".time-presets").classList.toggle("hidden", field("kind").value !== "time");
+    refreshTitle();
+    manualDraft = readQuestEditorDraft(container);
+  });
+  container.querySelectorAll('[data-field="day"]').forEach(input => input.addEventListener("change", () => {
+    const range = dateRangeFromDays(selectedDays(), activePlan().weekStartDate);
+    field("startDate").value = range.startDate;
+    field("endDate").value = range.endDate;
+    refreshTitle();
+    manualDraft = readQuestEditorDraft(container);
+  }));
+  [field("startDate"), field("endDate")].forEach(input => input.addEventListener("change", () => {
+    if (field("startDate").value && !field("endDate").value) field("endDate").value = field("startDate").value;
+    if (field("endDate").value && !field("startDate").value) field("startDate").value = field("endDate").value;
+    const days = daysFromDateRange(field("startDate").value, field("endDate").value);
+    container.querySelectorAll('[data-field="day"]').forEach(day => { day.checked = days.includes(day.value); });
+    refreshTitle();
+    manualDraft = readQuestEditorDraft(container);
+  }));
+  container.querySelectorAll(".time-preset").forEach(button => button.addEventListener("click", () => {
+    field("startTime").value = button.dataset.start;
+    field("endTime").value = button.dataset.end;
+    manualDraft = readQuestEditorDraft(container);
+  }));
+  container.addEventListener("input", () => { manualDraft = readQuestEditorDraft(container); });
+}
 function bindMilestoneRemovers(container) { container.querySelectorAll(".remove-milestone").forEach(button => button.onclick = () => button.closest(".milestone-row").remove()); }
 
 function readQuestEditor(container, existingId = null) {
   const value = field => container.querySelector(`[data-field="${field}"]`)?.value || "";
-  const milestones = [...container.querySelectorAll(".milestone-row")].map(row => ({ count:Number(row.querySelector(".milestone-count").value), reward:Number(row.querySelector(".milestone-reward").value) }));
+  const milestones = [...container.querySelectorAll(".milestone-row")].map(row => {
+    const count = row.querySelector(".milestone-count").value;
+    const reward = row.querySelector(".milestone-reward").value;
+    return { count:count === "" ? Number.NaN : Number(count), reward:reward === "" ? Number.NaN : Number(reward) };
+  });
   const repeatStart = value("repeatStart");
   const daysOfWeek = [...container.querySelectorAll('[data-field="day"]:checked')].map(input => input.value);
   return { id:existingId || newId(), serviceId:value("serviceId"), title:value("title").trim(), kind:value("kind"), startDate:value("startDate") || null, endDate:value("endDate") || null, startTime:value("startTime") || null, endTime:value("endTime") || null, daysOfWeek, milestones, repeatBonus:repeatStart ? { startCount:Number(repeatStart), endCount:Number(value("repeatEnd")), bonusPerDelivery:Number(value("repeatBonus")) } : null, selectedGoalCount:null, notes:"" };
+}
+
+function readQuestEditorDraft(container) {
+  const value = field => container.querySelector(`[data-field="${field}"]`)?.value || "";
+  const repeatStart = value("repeatStart");
+  return {
+    id:"manual", serviceId:value("serviceId"), title:value("title"), kind:value("kind"),
+    startDate:value("startDate"), endDate:value("endDate"), startTime:value("startTime"), endTime:value("endTime"),
+    daysOfWeek:[...container.querySelectorAll('[data-field="day"]:checked')].map(input => input.value),
+    milestones:[...container.querySelectorAll(".milestone-row")].map(row => ({ count:row.querySelector(".milestone-count").value, reward:row.querySelector(".milestone-reward").value })),
+    repeatBonus:repeatStart ? { startCount:repeatStart, endCount:value("repeatEnd"), bonusPerDelivery:value("repeatBonus") } : null
+  };
 }
 
 function showEditorIssues(container,result) { container.querySelector(".editor-issues").innerHTML = `${result.errors.length ? `<div class="issue-list error">${result.errors.map(esc).join("<br>")}</div>` : ""}${result.warnings.length ? `<div class="issue-list warning">${result.warnings.map(esc).join("<br>")}</div>` : ""}`; }

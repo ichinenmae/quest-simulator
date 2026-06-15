@@ -64,6 +64,8 @@ textarea { resize:vertical; line-height:1.55; }
 .issue-list.warning { background:#fff7ed; color:var(--warning); }
 .issue-list.error { background:#fff1f0; color:var(--danger); }
 .milestone-editor { display:grid; gap:8px; margin-top:12px; }
+.time-presets { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:14px; color:var(--muted); font-size:.8rem; font-weight:700; }
+.time-presets .secondary-button { padding:9px 11px; }
 .day-checks { display:flex; flex-wrap:wrap; gap:7px; }
 .day-check { display:flex; align-items:center; gap:5px; padding:8px 9px; border:1px solid var(--line); border-radius:10px; color:var(--ink); background:#fff; }
 .day-check input { width:auto; accent-color:var(--primary); }
