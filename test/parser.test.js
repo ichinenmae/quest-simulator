@@ -18,6 +18,37 @@ test("複数クエストとコメントを解析する", () => {
   assert.equal(parseAIText(text,services).items.length,2);
 });
 
+test("QUEST_TYPEで自動分割しMarkdown見出し付きマイルストーンを解析する", () => {
+  const text=`QUEST_TYPE: PERIOD
+SERVICE: Uber
+TITLE: 月～木期間クエスト
+PERIOD: MON_THU
+START_DATE: 2026-06-15
+END_DATE: 2026-06-18
+
+## 10=600
+20=1260
+
+QUEST_TYPE: TIME
+SERVICE: Uber
+TITLE: 月昼時間帯クエスト
+DAY: MON
+START_DATE: 2026-06-15
+END_DATE: 2026-06-15
+START: 10:30
+END: 14:30
+
+## 3=350
+6=800
+9=1400`;
+  const result=parseAIText(text,services);
+  assert.equal(result.items.length,2);
+  assert.equal(result.items[0].quest.kind,"period");
+  assert.deepEqual(result.items[0].quest.milestones,[{count:10,reward:600},{count:20,reward:1260}]);
+  assert.equal(result.items[1].quest.kind,"time");
+  assert.deepEqual(result.items[1].quest.milestones,[{count:3,reward:350},{count:6,reward:800},{count:9,reward:1400}]);
+});
+
 test("UNKNOWNと不明キーは警告する", () => {
   const result=parseAIText(`QUEST_TYPE: PERIOD\nSERVICE: UNKNOWN\nTITLE: A\nPERIOD: UNKNOWN\nFOO: BAR\n60=3160`,services);
   assert.ok(result.items[0].warnings.some(item=>item.includes("UNKNOWN")));
