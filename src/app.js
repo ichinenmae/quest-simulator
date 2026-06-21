@@ -28,6 +28,59 @@ END: 15:00
 3=300
 6=600
 12=1500`;
+const GEMINI_URL = "https://gemini.google.com/";
+const GEMINI_PROMPT = `添付したUberアプリのスクリーンショットから、クエスト情報を読み取ってください。
+
+以下のルールを厳守してください。
+- 読み取れた情報だけを出力する
+- 推測で補完しない
+- 金額の円記号とカンマを除いた数値にする
+- 複数のクエストがある場合は --- で区切る
+- 出力は下記フォーマットのみ
+- 説明文や感想は書かない
+- 読み取れない項目は UNKNOWN と書く
+
+期間クエストの場合:
+
+QUEST_TYPE: PERIOD
+SERVICE: Uber
+TITLE: 任意の短い名前
+PERIOD: MON_THU または FRI_SUN または UNKNOWN
+START_DATE: YYYY-MM-DD または UNKNOWN
+END_DATE: YYYY-MM-DD または UNKNOWN
+
+件数=報酬
+件数=報酬
+
+時間帯クエストの場合:
+
+QUEST_TYPE: TIME
+SERVICE: Uber
+TITLE: 任意の短い名前
+DAY: MON/TUE/WED/THU/FRI/SAT/SUN または UNKNOWN
+START: HH:MM または UNKNOWN
+END: HH:MM または UNKNOWN
+
+件数=報酬
+件数=報酬
+
+雨天・天候クエストの場合:
+
+QUEST_TYPE: WEATHER
+SERVICE: Uber
+TITLE: 任意の短い名前
+DAY: MON/TUE/WED/THU/FRI/SAT/SUN または UNKNOWN
+START: HH:MM または UNKNOWN
+END: HH:MM または UNKNOWN
+
+件数=累計報酬
+件数=累計報酬
+
+一定件数以降、1件ごとに同額が加算される場合だけ、以下も追加してください。
+
+REPEAT_START=開始件数
+REPEAT_END=終了件数 または UNLIMITED
+REPEAT_BONUS=1件ごとの追加額`;
 
 let { state, recovered } = loadState();
 let currentScreen = "dashboard";
@@ -64,9 +117,44 @@ function bindStaticActions() {
   $("#week-start").addEventListener("change", event => { activePlan().weekStartDate = normalizeMonday(event.target.value); activePlan().id = `plan_${activePlan().weekStartDate}`; commit("対象週を保存しました"); renderAll(); });
   $("#plan-service").addEventListener("change", event => { activePlan().serviceId = event.target.value; commit("計画サービスを保存しました"); renderAll(); });
   $("#fill-sample").addEventListener("click", () => { $("#ai-input").value = SAMPLE_TEXT; });
+  $("#open-gemini").addEventListener("click", openGeminiWithPrompt);
   $("#parse-ai").addEventListener("click", parseInput);
   $("#add-service").addEventListener("click", () => { state.services.push({ id:newId("svc"), name:"新しいサービス", baseRewardPerDelivery:500, deliveriesPerHour:3, enabled:true }); commit("サービスを追加しました"); renderSettings(); });
   $("#save-settings").addEventListener("click", () => { state.settings.marginCount = Math.max(0, Number($("#margin-count").value)); state.settings.allowedAdditionalHours = Math.max(0, Number($("#allowed-hours").value)); commit("判定基準を保存しました"); renderAll(); });
+}
+
+async function openGeminiWithPrompt() {
+  const geminiTab = window.open("about:blank", "_blank");
+  if (geminiTab) geminiTab.opener = null;
+  try {
+    await copyText(GEMINI_PROMPT);
+    showMessage("Gemini用プロンプトをコピーしました。Geminiでスクリーンショットを添付して貼り付けてください。");
+  } catch {
+    showMessage("プロンプトの自動コピーに失敗しました。ブラウザの権限設定を確認してください。", true);
+  }
+  if (geminiTab) {
+    geminiTab.location.replace(GEMINI_URL);
+    return;
+  }
+  const opened = window.open(GEMINI_URL, "_blank", "noopener");
+  if (!opened) showMessage("Geminiを開けませんでした。ポップアップを許可するか、リンクから開いてください。", true);
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const helper = document.createElement("textarea");
+  helper.value = text;
+  helper.setAttribute("readonly", "");
+  helper.style.position = "fixed";
+  helper.style.left = "-9999px";
+  document.body.appendChild(helper);
+  helper.select();
+  const succeeded = document.execCommand("copy");
+  helper.remove();
+  if (!succeeded) throw new Error("copy failed");
 }
 
 function showScreen(name) {

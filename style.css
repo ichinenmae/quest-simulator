@@ -34,6 +34,11 @@ h3 { font-size:1rem; margin-bottom:8px; }
 .secondary-button { color:var(--primary); background:var(--accent); }
 .danger-button { color:var(--danger); background:#fff0ef; }
 .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+.gemini-launch { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:13px; margin-bottom:14px; border:1px solid var(--line); border-radius:14px; background:#f8fbfa; }
+.gemini-launch strong { display:block; font-size:.94rem; }
+.gemini-launch .helper { margin-top:4px; }
+.gemini-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.gemini-link { white-space:nowrap; }
 .form-grid { display:grid; gap:14px; }
 .form-grid.two { grid-template-columns:1fr; }
 label { display:grid; gap:6px; color:var(--muted); font-size:.8rem; font-weight:700; }
@@ -141,6 +146,7 @@ tr.confirmed { box-shadow:inset 4px 0 var(--primary); }
 .bottom-nav .nav-button.active { background:#fff; color:var(--primary-dark); }
 @media (min-width:700px) { .main-content { padding:28px 28px 100px; } .summary-grid { grid-template-columns:repeat(4,1fr); } .form-grid.two { grid-template-columns:repeat(2,1fr); } .week-grid { grid-template-columns:repeat(2,1fr); } .card-list { grid-template-columns:repeat(2,1fr); } .service-row { grid-template-columns:2fr 1fr 1fr; } .service-row .wide { grid-column:auto; } .service-row .row-actions { grid-column:1/-1; } }
 @media (max-width:560px) { .goal-selection-bar { align-items:stretch; flex-direction:column; } .goal-selection-bar .primary-button { width:100%; } }
+@media (max-width:560px) { .gemini-launch { flex-direction:column; } .gemini-actions,.gemini-actions .secondary-button { width:100%; } .gemini-actions { justify-content:stretch; } }
 @media (max-width:420px) { .period-projection { align-items:flex-start; flex-direction:column; } .period-projection-numbers { text-align:left; } }
 @media (max-width:420px) { .quest-summary-main { align-items:flex-start; flex-direction:column; } .quest-rewards { text-align:left; } }
 @media (min-width:480px) { .slot-row { grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto; gap:7px; margin-bottom:9px; } .slot-row .separator { display:block; } .slot-row .remove-slot { grid-column:auto; } }
