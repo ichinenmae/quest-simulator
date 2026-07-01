@@ -68,12 +68,14 @@ export function businessDayFor(date, boundaryHour = BUSINESS_DAY_START_HOUR) {
 }
 
 export function dayPlanStats(dayPlan, service) {
-  if (!dayPlan?.enabled) return { hours: 0, deliveries: 0, errors: [] };
+  const hasActualCount = dayPlan?.actualDeliveryCount !== null && dayPlan?.actualDeliveryCount !== "" && dayPlan?.actualDeliveryCount !== undefined;
+  if (!dayPlan?.enabled && !hasActualCount) return { hours: 0, deliveries: 0, errors: [] };
   const errors = validateSlots(dayPlan.slots || []);
   const hours = errors.length ? 0 : (dayPlan.slots || []).reduce((sum, slot) => sum + slotDurationHours(slot), 0);
   const automatic = hours * Number(service?.deliveriesPerHour || 0);
-  const deliveries = dayPlan.manualDeliveryCount === null || dayPlan.manualDeliveryCount === "" ? automatic : Number(dayPlan.manualDeliveryCount);
-  return { hours, deliveries: Number.isFinite(deliveries) ? deliveries : 0, errors };
+  const deliveries = hasActualCount ? Number(dayPlan.actualDeliveryCount) : dayPlan.manualDeliveryCount === null || dayPlan.manualDeliveryCount === "" ? automatic : Number(dayPlan.manualDeliveryCount);
+  const actualRevenue = dayPlan.actualRevenue === null || dayPlan.actualRevenue === "" || dayPlan.actualRevenue === undefined ? null : Number(dayPlan.actualRevenue);
+  return { hours, deliveries: Number.isFinite(deliveries) ? deliveries : 0, actualRevenue:Number.isFinite(actualRevenue) ? actualRevenue : null, errors };
 }
 
 export function planStats(plan, service) {
@@ -93,7 +95,8 @@ export function predictedQuestDeliveriesForDay(quest, plan, day, service, scopeQ
   const stats = dayPlanStats(day, service);
   if (!quest.startTime || !quest.endTime) return stats.deliveries;
   const overlapHours = (day.slots || []).reduce((sum, slot) => sum + slotOverlapHours(slot, { start:quest.startTime, end:quest.endTime }), 0);
-  if (day.manualDeliveryCount === null || day.manualDeliveryCount === "" || stats.hours <= 0) return overlapHours * rate;
+  const hasCountOverride = day.actualDeliveryCount !== null && day.actualDeliveryCount !== "" && day.actualDeliveryCount !== undefined || day.manualDeliveryCount !== null && day.manualDeliveryCount !== "" && day.manualDeliveryCount !== undefined;
+  if (!hasCountOverride || stats.hours <= 0) return overlapHours * rate;
   return stats.deliveries * (overlapHours / stats.hours);
 }
 
@@ -216,7 +219,7 @@ export function weeklyDayForecasts(quests, plan, service, settings = {}) {
   const summaries = weeklyQuestSummaries(quests,plan,service,settings);
   const days = (plan?.workSlots || []).map(day => {
     const stats = dayPlanStats(day,service);
-    return { day:day.day, hours:stats.hours, deliveries:stats.deliveries, baseRevenue:stats.deliveries * Number(service?.baseRewardPerDelivery || 0), questRevenue:0 };
+    return { day:day.day, hours:stats.hours, deliveries:stats.deliveries, baseRevenue:stats.actualRevenue ?? stats.deliveries * Number(service?.baseRewardPerDelivery || 0), questRevenue:0 };
   });
   summaries.filter(item => item.projectedReward > 0).forEach(item => {
     const counts = (plan?.workSlots || []).map(day => predictedQuestDeliveriesForDay(item.quest,plan,day,service));

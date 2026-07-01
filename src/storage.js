@@ -33,7 +33,7 @@ export function createDefaultPlan(weekStartDate = mondayOf(), serviceId = "svc_u
     id: `plan_${weekStartDate}`,
     weekStartDate,
     serviceId,
-    workSlots: ["mon","tue","wed","thu","fri","sat","sun"].map(day => ({ day, enabled: day !== "wed", slots: day === "wed" ? [] : [{ start: "10:00", end: "15:00" }], manualDeliveryCount: null }))
+    workSlots: ["mon","tue","wed","thu","fri","sat","sun"].map(day => ({ day, enabled: day !== "wed", slots: day === "wed" ? [] : [{ start: "10:00", end: "15:00" }], manualDeliveryCount: null, actualDeliveryCount: null, actualRevenue: null }))
   };
 }
 

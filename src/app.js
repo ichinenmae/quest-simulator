@@ -299,7 +299,9 @@ function cloneDayPlan(day, targetDay = day.day) {
     day: targetDay,
     enabled: !!day.enabled,
     slots: (day.slots || []).map(slot => ({ ...slot })),
-    manualDeliveryCount: day.manualDeliveryCount ?? null
+    manualDeliveryCount: day.manualDeliveryCount ?? null,
+    actualDeliveryCount: null,
+    actualRevenue: null
   };
 }
 
@@ -950,7 +952,12 @@ function renderDashboard() {
   $("#dashboard-recommendation").innerHTML = projections.length ? `<div class="period-projection-list">${projections.map(item => `<div class="period-projection"><div><strong>${esc(item.period.title)}</strong><span>${item.basis.source === "confirmed" ? "確定済み" : "未確定・推奨を仮使用"}</span></div><div class="period-projection-numbers"><b>${formatNumber(item.basis.row.count)}件 <span class="judgement">${item.basis.row.judgement}</span></b><small>予想${formatNumber(item.deliveries)}件 / 報酬見込${formatCurrency(item.reward)}</small></div></div>`).join("")}</div>` : '<p class="empty" style="color:#d5ebe6">期間クエストを登録すると推奨目標を表示します。</p>';
   const dayForecasts = weeklyDayForecasts(quests,activePlan(),service,state.settings);
   const max = Math.max(1,...dayForecasts.map(item=>item.deliveries));
-  $("#dashboard-days").innerHTML = dayForecasts.map(day=>`<div class="bar-row"><span>${DAY_LABELS[day.day]}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,day.deliveries/max*100)}%"></div></div><div class="bar-values"><strong>${formatNumber(day.deliveries)}件</strong><small>${formatNumber(day.hours)}h / ${formatCurrency(day.revenue)}</small></div></div>`).join("");
+  $("#dashboard-days").innerHTML = dayForecasts.map(day => {
+    const planDay = activePlan().workSlots.find(item => item.day === day.day) || {};
+    const actual = planDay.actualDeliveryCount !== null && planDay.actualDeliveryCount !== "" && planDay.actualDeliveryCount !== undefined;
+    return `<div class="bar-row dashboard-day-row" data-day="${day.day}"><span>${DAY_LABELS[day.day]}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,day.deliveries/max*100)}%"></div></div><div class="bar-values"><strong>${formatNumber(day.deliveries)}件${actual ? " 実績" : ""}</strong><small>${formatNumber(day.hours)}h / ${formatCurrency(day.revenue)}</small></div><div class="actual-inputs"><label>実績件数<input class="dashboard-actual-count" type="number" min="0" step="1" placeholder="未入力" value="${planDay.actualDeliveryCount ?? ""}"></label><label>実績報酬<input class="dashboard-actual-revenue" type="number" min="0" step="1" placeholder="未入力" value="${planDay.actualRevenue ?? ""}"></label></div></div>`;
+  }).join("");
+  bindDashboardActualInputs();
   const questSummaries = weeklyQuestSummaries(quests,activePlan(),service,state.settings);
   $("#dashboard-quests").innerHTML = questSummaries.length ? questSummaries.map(item=>questSummaryCard(item)).join("") : '<p class="empty">対象週のクエストはありません。</p>';
   $$(".add-quest-schedule").forEach(button => button.addEventListener("click", () => addQuestSchedule(button.dataset.questId)));
@@ -962,6 +969,25 @@ function questSummaryCard(item) {
   const scheduleButton = item.quest.startTime && item.quest.endTime ? `<button class="secondary-button add-quest-schedule" type="button" data-quest-id="${item.quest.id}">時間帯を予定に追加</button>` : "";
   const periodState = item.basis ? ` / ${item.basis.source === "confirmed" ? "選択" : "推奨"}${formatNumber(item.maximum.count)}件` : "";
   return `<article class="quest-summary ${tone}"><div class="quest-summary-main"><div><span class="badge">${QUEST_KINDS[item.quest.kind]}</span><strong>${esc(item.quest.title)}</strong><p class="quest-meta">${esc(questScheduleLabel(item.quest))}</p><p>${formatNumber(item.predictedCount)}件見込み${periodState}</p>${questTrendBadge(item)}</div><div class="quest-rewards"><span>最大 ${maxReward}</span><b>見込 ${formatCurrency(item.projectedReward)}</b></div></div>${scheduleButton}</article>`;
+}
+
+function bindDashboardActualInputs() {
+  $$(".dashboard-day-row").forEach(row => {
+    const day = activePlan().workSlots.find(item => item.day === row.dataset.day);
+    if (!day) return;
+    row.querySelector(".dashboard-actual-count").addEventListener("change", event => {
+      day.actualDeliveryCount = event.target.value === "" ? null : Math.max(0, Number(event.target.value));
+      if (day.actualDeliveryCount !== null) day.enabled = true;
+      commit("実績件数を保存しました");
+      renderAll();
+    });
+    row.querySelector(".dashboard-actual-revenue").addEventListener("change", event => {
+      day.actualRevenue = event.target.value === "" ? null : Math.max(0, Number(event.target.value));
+      if (day.actualRevenue !== null) day.enabled = true;
+      commit("実績報酬を保存しました");
+      renderAll();
+    });
+  });
 }
 
 function questTrendBadge(item) {
