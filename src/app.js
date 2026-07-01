@@ -536,7 +536,7 @@ function renderPlan() {
 }
 
 function dayCard(day, service, weekStartDate) {
-  const stats = dayPlanStats(day, service);
+  const stats = dayPlanStats({ ...day, actualDeliveryCount:null, actualRevenue:null }, service);
   const slots = day.slots.map((slot,index) => `<div class="slot-row" data-slot="${index}"><label>開始<div class="time-input-pair"><input class="slot-start" type="text" inputmode="numeric" autocomplete="off" placeholder="10:00" value="${esc(slot.start)}"><button class="time-picker-button" type="button" data-picker="start" aria-label="開始時刻を選択">◷</button><input class="slot-picker slot-start-picker" type="time" value="${esc(pickerTimeValue(slot.start))}" tabindex="-1" aria-hidden="true"></div></label><span class="separator">〜</span><label>終了<div class="time-input-pair"><input class="slot-end" type="text" inputmode="numeric" autocomplete="off" placeholder="15:00" value="${esc(slot.end)}"><button class="time-picker-button" type="button" data-picker="end" aria-label="終了時刻を選択">◷</button><input class="slot-picker slot-end-picker" type="time" value="${esc(pickerTimeValue(slot.end))}" tabindex="-1" aria-hidden="true"></div></label><button class="icon-button remove-slot" aria-label="稼働枠を削除">×</button></div>`).join("");
   const date = dateForPlanDay(weekStartDate, day.day);
   return `<article class="day-card ${day.enabled ? "" : "disabled"}" data-day="${day.day}"><div class="day-header"><div><h3>${DAY_LABELS[day.day]}曜日 <span>${formatShortDate(date)}</span></h3><p>${esc(date)}</p></div><label class="switch"><input class="day-enabled" type="checkbox" ${day.enabled ? "checked" : ""}>稼働する</label></div><div class="slot-list">${slots || '<p class="helper">稼働枠がありません。</p>'}</div><button class="secondary-button add-slot" type="button">稼働枠を追加</button><label style="margin-top:12px">予想件数の手動上書き<input class="manual-count" type="number" min="0" step="1" placeholder="自動計算" value="${esc(manualCountValue(day))}"></label>${stats.errors.length ? `<p class="error-text">${stats.errors.map(esc).join("<br>")}</p>` : ""}<div class="day-stats"><span>稼働 <strong>${formatNumber(stats.hours)}h</strong></span><span>予想 <strong>${formatNumber(stats.deliveries)}件</strong></span></div></article>`;
@@ -963,8 +963,9 @@ function renderDashboard() {
   const max = Math.max(1,...dayForecasts.map(item=>item.deliveries));
   $("#dashboard-days").innerHTML = dayForecasts.map(day => {
     const planDay = activePlan().workSlots.find(item => item.day === day.day) || {};
-    const actual = planDay.actualDeliveryCount !== null && planDay.actualDeliveryCount !== "" && planDay.actualDeliveryCount !== undefined;
-    return `<div class="bar-row dashboard-day-row" data-day="${day.day}"><span>${DAY_LABELS[day.day]}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,day.deliveries/max*100)}%"></div></div><div class="bar-values"><strong>${formatNumber(day.deliveries)}件${actual ? " 実績" : ""}</strong><small>${formatNumber(day.hours)}h / ${formatCurrency(day.revenue)}</small></div><div class="actual-inputs"><label>実績件数<input class="dashboard-actual-count" type="number" min="0" step="1" placeholder="未入力" value="${planDay.actualDeliveryCount ?? ""}"></label><label>実績報酬<input class="dashboard-actual-revenue" type="number" min="0" step="1" placeholder="未入力" value="${planDay.actualRevenue ?? ""}"></label></div></div>`;
+    const actualValue = Number(planDay.actualDeliveryCount);
+    const actual = planDay.actualDeliveryCount !== null && planDay.actualDeliveryCount !== "" && planDay.actualDeliveryCount !== undefined && Number.isFinite(actualValue);
+    return `<div class="bar-row dashboard-day-row" data-day="${day.day}"><span>${DAY_LABELS[day.day]}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,day.deliveries/max*100)}%"></div></div><div class="bar-values"><strong>${formatNumber(day.deliveries)}件${actual ? " 実績" : ""}</strong><small>${formatNumber(day.hours)}h / ${formatCurrency(day.revenue)}</small></div><div class="actual-inputs"><label>実績件数<input class="dashboard-actual-count" type="number" min="0" step="1" placeholder="未入力" value="${actual ? esc(planDay.actualDeliveryCount) : ""}"></label><label>実績報酬<input class="dashboard-actual-revenue" type="number" min="0" step="1" placeholder="未入力" value="${planDay.actualRevenue ?? ""}"></label></div></div>`;
   }).join("");
   bindDashboardActualInputs();
   const questSummaries = weeklyQuestSummaries(quests,activePlan(),service,state.settings);
@@ -985,13 +986,15 @@ function bindDashboardActualInputs() {
     const day = activePlan().workSlots.find(item => item.day === row.dataset.day);
     if (!day) return;
     row.querySelector(".dashboard-actual-count").addEventListener("change", event => {
-      day.actualDeliveryCount = event.target.value === "" ? null : Math.max(0, Number(event.target.value));
+      const value = Number(event.target.value);
+      day.actualDeliveryCount = event.target.value === "" || !Number.isFinite(value) ? null : Math.max(0, value);
       if (day.actualDeliveryCount !== null) day.enabled = true;
       commit("実績件数を保存しました");
       renderAll();
     });
     row.querySelector(".dashboard-actual-revenue").addEventListener("change", event => {
-      day.actualRevenue = event.target.value === "" ? null : Math.max(0, Number(event.target.value));
+      const value = Number(event.target.value);
+      day.actualRevenue = event.target.value === "" || !Number.isFinite(value) ? null : Math.max(0, value);
       if (day.actualRevenue !== null) day.enabled = true;
       commit("実績報酬を保存しました");
       renderAll();

@@ -68,13 +68,14 @@ export function businessDayFor(date, boundaryHour = BUSINESS_DAY_START_HOUR) {
 }
 
 export function dayPlanStats(dayPlan, service) {
-  const hasActualCount = dayPlan?.actualDeliveryCount !== null && dayPlan?.actualDeliveryCount !== "" && dayPlan?.actualDeliveryCount !== undefined;
+  const actualCount = Number(dayPlan?.actualDeliveryCount);
+  const hasActualCount = dayPlan?.actualDeliveryCount !== null && dayPlan?.actualDeliveryCount !== "" && dayPlan?.actualDeliveryCount !== undefined && Number.isFinite(actualCount);
   if (!dayPlan?.enabled && !hasActualCount) return { hours: 0, deliveries: 0, errors: [] };
   const errors = validateSlots(dayPlan.slots || []);
   const hours = errors.length ? 0 : (dayPlan.slots || []).reduce((sum, slot) => sum + slotDurationHours(slot), 0);
   const automatic = hours * Number(service?.deliveriesPerHour || 0);
   const manual = Number(dayPlan.manualDeliveryCount);
-  const deliveries = hasActualCount ? Number(dayPlan.actualDeliveryCount) : !Number.isFinite(manual) || manual <= 0 ? automatic : manual;
+  const deliveries = hasActualCount ? actualCount : !Number.isFinite(manual) || manual <= 0 ? automatic : manual;
   const actualRevenue = dayPlan.actualRevenue === null || dayPlan.actualRevenue === "" || dayPlan.actualRevenue === undefined ? null : Number(dayPlan.actualRevenue);
   return { hours, deliveries: Number.isFinite(deliveries) ? deliveries : 0, actualRevenue:Number.isFinite(actualRevenue) ? actualRevenue : null, errors };
 }
@@ -97,7 +98,8 @@ export function predictedQuestDeliveriesForDay(quest, plan, day, service, scopeQ
   if (!quest.startTime || !quest.endTime) return stats.deliveries;
   const overlapHours = (day.slots || []).reduce((sum, slot) => sum + slotOverlapHours(slot, { start:quest.startTime, end:quest.endTime }), 0);
   const manual = Number(day.manualDeliveryCount);
-  const hasCountOverride = day.actualDeliveryCount !== null && day.actualDeliveryCount !== "" && day.actualDeliveryCount !== undefined || Number.isFinite(manual) && manual > 0;
+  const actualCount = Number(day.actualDeliveryCount);
+  const hasCountOverride = day.actualDeliveryCount !== null && day.actualDeliveryCount !== "" && day.actualDeliveryCount !== undefined && Number.isFinite(actualCount) || Number.isFinite(manual) && manual > 0;
   if (!hasCountOverride || stats.hours <= 0) return overlapHours * rate;
   return stats.deliveries * (overlapHours / stats.hours);
 }
