@@ -19,6 +19,7 @@
           <button class="nav-button" data-screen="plan">週間計画</button>
           <button class="nav-button" data-screen="quests">クエスト</button>
           <button class="nav-button" data-screen="goals">目標選択</button>
+          <button class="nav-button" data-screen="history">過去クエスト</button>
           <button class="nav-button" data-screen="settings">設定</button>
         </nav>
         <div class="sidebar-note">営業日の区切り 04:00</div>
@@ -65,15 +66,21 @@
           <article class="panel table-panel"><div id="goal-table"></div></article>
         </section>
 
+        <section id="history-screen" class="screen">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">QUEST HISTORY</p><h2>過去クエスト閲覧</h2></div></div><div id="history-summary"></div></article>
+          <article class="panel table-panel"><div id="history-table"></div></article>
+        </section>
+
         <section id="settings-screen" class="screen">
           <article class="panel"><div class="panel-heading"><div><p class="eyebrow">SERVICES</p><h2>サービス設定</h2></div><button id="add-service" class="secondary-button">サービス追加</button></div><div id="service-settings" class="settings-list"></div></article>
           <article class="panel form-panel"><div class="panel-heading"><div><p class="eyebrow">JUDGEMENT</p><h2>達成見込みの基準</h2></div></div><div class="form-grid two"><label>余裕件数<input id="margin-count" type="number" min="0" step="1"></label><label>許容追加時間<input id="allowed-hours" type="number" min="0" step="0.5"></label></div><div class="actions"><button id="save-settings" class="primary-button">設定を保存</button></div></article>
+          <article class="panel form-panel"><div class="panel-heading"><div><p class="eyebrow">STORAGE</p><h2>保存データ</h2></div></div><p class="helper">登録済みクエスト、稼働予定、サービス設定をこのブラウザから削除します。</p><div class="actions"><button id="reset-storage" class="danger-button" type="button">保存データを初期化</button></div></article>
         </section>
       </main>
     </div>
 
     <nav class="bottom-nav" aria-label="モバイルナビゲーション">
-      <button class="nav-button active" data-screen="dashboard"><span>概要</span></button><button class="nav-button" data-screen="plan"><span>計画</span></button><button class="nav-button" data-screen="quests"><span>クエスト</span></button><button class="nav-button" data-screen="goals"><span>目標</span></button><button class="nav-button" data-screen="settings"><span>設定</span></button>
+      <button class="nav-button active" data-screen="dashboard"><span>概要</span></button><button class="nav-button" data-screen="plan"><span>計画</span></button><button class="nav-button" data-screen="quests"><span>入力</span></button><button class="nav-button" data-screen="goals"><span>目標</span></button><button class="nav-button" data-screen="history"><span>履歴</span></button><button class="nav-button" data-screen="settings"><span>設定</span></button>
     </nav>
     <script type="module" src="./src/app.js?v=20260615-12"></script>
   </body>
