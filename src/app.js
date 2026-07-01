@@ -375,6 +375,18 @@ function animateRegistration(element, done) {
   animateCardExit(element, "registered", done);
 }
 
+function animateCardExitPromise(element, className) {
+  return new Promise(resolve => animateCardExit(element, className, resolve));
+}
+
+function selectedIndexes(selector) {
+  return $$(selector).filter(input => input.checked).map(input => Number(input.closest("[data-preview]")?.dataset.preview)).filter(Number.isInteger);
+}
+
+function selectedQuestIds() {
+  return $$(".quest-select").filter(input => input.checked).map(input => input.value);
+}
+
 function renderPlan() {
   const plan = activePlan();
   const service = activeService();
@@ -523,7 +535,11 @@ function parseInput() {
 }
 
 function renderPreview() {
-  $("#ai-preview").innerHTML = parsedItems.map((item,index) => `<article class="panel preview-card" data-preview="${index}"><div class="panel-heading"><div><span class="badge">検出 ${index + 1}</span><h2 style="margin-top:8px">登録前プレビュー</h2></div></div>${questFields(item.quest,`preview-${index}`)}${item.errors.length ? `<div class="issue-list error">${item.errors.map(esc).join("<br>")}</div>` : ""}${item.warnings.length ? `<div class="issue-list warning">${item.warnings.map(esc).join("<br>")}</div>` : ""}<div class="actions"><button class="secondary-button cancel-preview" type="button">除外</button><button class="primary-button register-preview" type="button">修正内容を検証して登録</button></div></article>`).join("");
+  const toolbar = parsedItems.length ? `<div class="bulk-toolbar"><label class="bulk-check"><input id="preview-select-all" type="checkbox">すべて選択</label><div class="bulk-actions"><button id="register-selected-preview" class="secondary-button" type="button">選択を登録</button><button id="register-all-preview" class="primary-button" type="button">すべて登録</button></div></div>` : "";
+  $("#ai-preview").innerHTML = toolbar + parsedItems.map((item,index) => `<article class="panel preview-card" data-preview="${index}"><div class="panel-heading"><div><span class="badge">検出 ${index + 1}</span><h2 style="margin-top:8px">登録前プレビュー</h2></div><label class="card-check"><input class="preview-select" type="checkbox">選択</label></div>${questFields(item.quest,`preview-${index}`)}${item.errors.length ? `<div class="issue-list error">${item.errors.map(esc).join("<br>")}</div>` : ""}${item.warnings.length ? `<div class="issue-list warning">${item.warnings.map(esc).join("<br>")}</div>` : ""}<div class="actions"><button class="secondary-button cancel-preview" type="button">除外</button><button class="primary-button register-preview" type="button">修正内容を検証して登録</button></div></article>`).join("");
+  $("#preview-select-all")?.addEventListener("change", event => $$(".preview-select").forEach(input => { input.checked = event.target.checked; }));
+  $("#register-selected-preview")?.addEventListener("click", () => registerPreviewBatch(selectedIndexes(".preview-select"), "選択したクエスト"));
+  $("#register-all-preview")?.addEventListener("click", () => registerPreviewBatch(parsedItems.map((_,index) => index), "すべてのクエスト"));
   $$("[data-preview]").forEach(card => {
     bindQuestEditor(card);
     const index = Number(card.dataset.preview);
@@ -545,14 +561,55 @@ function renderPreview() {
   });
 }
 
+function previewQuestForIndex(index) {
+  const card = document.querySelector(`[data-preview="${index}"]`);
+  if (!card || !parsedItems[index]) return null;
+  const quest = readQuestEditor(card,parsedItems[index].quest.id);
+  const result = questValidation(quest,state.services);
+  showEditorIssues(card,result);
+  return { card, quest, result, index };
+}
+
+async function registerPreviewBatch(indexes, label) {
+  const uniqueIndexes = [...new Set(indexes)].filter(index => parsedItems[index]).sort((a,b) => a - b);
+  if (!uniqueIndexes.length) return showMessage("登録するクエストを選択してください。", true);
+  const items = uniqueIndexes.map(previewQuestForIndex).filter(Boolean);
+  if (items.some(item => item.result.errors.length)) return showMessage("エラーがあるため一括登録できません。赤い表示の項目を修正してください。", true);
+  if (!window.confirm(`${label} ${items.length}件を登録します。よろしいですか？`)) return;
+  items.forEach(item => item.card.querySelectorAll("button,input,select,textarea").forEach(control => { control.disabled = true; }));
+  state.quests.push(...items.map(item => item.quest));
+  commit(`${items.length}件のクエストを登録しました`);
+  showMessage(`${items.length}件のクエストを登録しました。`);
+  await Promise.all(items.map(item => animateCardExitPromise(item.card, "registered")));
+  uniqueIndexes.sort((a,b) => b - a).forEach(index => parsedItems.splice(index,1));
+  renderPreview();
+  renderAll();
+}
+
 function renderQuestList() {
   const root = $("#quest-list");
   if (!state.quests.length) { root.innerHTML = '<article class="panel empty">登録済みのクエストはありません。</article>'; return; }
-  root.innerHTML = state.quests.map(quest => { const svc = state.services.find(item => item.id === quest.serviceId); return `<article class="panel"><div class="panel-heading"><div><span class="badge">${QUEST_KINDS[quest.kind]}</span><h3 style="margin-top:8px">${esc(quest.title)}</h3><p class="helper">${esc(svc?.name || "不明")} / ${quest.milestones.length}段階</p></div><button class="danger-button delete-quest" data-id="${quest.id}">削除</button></div>${quest.milestones.map(item => `<div class="compact-item"><span>${formatNumber(item.count)}件</span><strong>${formatCurrency(item.reward)}</strong></div>`).join("")}</article>`; }).join("");
+  root.innerHTML = `<div class="bulk-toolbar"><label class="bulk-check"><input id="quest-select-all" type="checkbox">すべて選択</label><div class="bulk-actions"><button id="delete-selected-quests" class="danger-button" type="button">選択を削除</button><button id="delete-all-quests" class="danger-button" type="button">すべて削除</button></div></div>` + state.quests.map(quest => { const svc = state.services.find(item => item.id === quest.serviceId); return `<article class="panel"><div class="panel-heading"><div><span class="badge">${QUEST_KINDS[quest.kind]}</span><h3 style="margin-top:8px">${esc(quest.title)}</h3><p class="helper">${esc(svc?.name || "不明")} / ${quest.milestones.length}段階</p></div><div class="card-actions"><label class="card-check"><input class="quest-select" type="checkbox" value="${esc(quest.id)}">選択</label><button class="danger-button delete-quest" data-id="${quest.id}">削除</button></div></div>${quest.milestones.map(item => `<div class="compact-item"><span>${formatNumber(item.count)}件</span><strong>${formatCurrency(item.reward)}</strong></div>`).join("")}</article>`; }).join("");
+  $("#quest-select-all")?.addEventListener("change", event => $$(".quest-select").forEach(input => { input.checked = event.target.checked; }));
+  $("#delete-selected-quests")?.addEventListener("click", () => deleteQuestBatch(selectedQuestIds(), "選択したクエスト"));
+  $("#delete-all-quests")?.addEventListener("click", () => deleteQuestBatch(state.quests.map(quest => quest.id), "すべてのクエスト"));
   $$(".delete-quest").forEach(button => button.addEventListener("click", () => {
     const card = button.closest(".panel");
     animateRemoval(card, () => { state.quests = state.quests.filter(item => item.id !== button.dataset.id); commit("クエストを削除しました"); renderAll(); });
   }));
+}
+
+async function deleteQuestBatch(ids, label) {
+  const uniqueIds = [...new Set(ids)].filter(id => state.quests.some(quest => quest.id === id));
+  if (!uniqueIds.length) return showMessage("削除するクエストを選択してください。", true);
+  if (!window.confirm(`${label} ${uniqueIds.length}件を削除します。この操作は元に戻せません。よろしいですか？`)) return;
+  const cards = uniqueIds.map(id => $$(".delete-quest").find(button => button.dataset.id === id)?.closest(".panel")).filter(Boolean);
+  cards.forEach(card => card.querySelectorAll("button,input").forEach(control => { control.disabled = true; }));
+  await Promise.all(cards.map(card => animateCardExitPromise(card, "removing")));
+  state.quests = state.quests.filter(quest => !uniqueIds.includes(quest.id));
+  commit(`${uniqueIds.length}件のクエストを削除しました`);
+  showMessage(`${uniqueIds.length}件のクエストを削除しました。`);
+  renderAll();
 }
 
 function renderSettings() {
