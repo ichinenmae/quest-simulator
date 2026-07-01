@@ -63,6 +63,9 @@ textarea { resize:vertical; line-height:1.55; }
 .slot-row input { min-width:0; }
 .slot-row .separator { display:none; padding-bottom:11px; color:var(--muted); }
 .slot-row .remove-slot { grid-column:1/-1; justify-self:end; }
+.time-input-pair { display:grid; grid-template-columns:minmax(0,1fr) 46px; gap:6px; align-items:center; }
+.time-input-pair .slot-picker { padding:10px 4px; color:transparent; min-width:0; }
+.time-input-pair .slot-picker::-webkit-calendar-picker-indicator { cursor:pointer; margin:0; opacity:.85; }
 .icon-button { width:38px; height:42px; border:0; border-radius:10px; color:var(--danger); background:#fff1f0; font-weight:900; }
 .day-stats { display:flex; justify-content:space-between; padding-top:12px; margin-top:12px; border-top:1px solid var(--line); color:var(--muted); font-size:.8rem; }
 .day-stats strong { color:var(--ink); font-size:1rem; }
@@ -136,6 +139,7 @@ tr.confirmed { box-shadow:inset 4px 0 var(--primary); }
 .quest-summary-main { display:flex; align-items:center; justify-content:space-between; gap:14px; }
 .quest-summary-main strong { display:block; margin-top:6px; }
 .quest-summary-main p { margin:4px 0 0; color:var(--muted); font-size:.76rem; }
+.quest-meta { color:var(--primary-dark); font-size:.75rem; font-weight:800; margin:7px 0 0; }
 .quest-summary-main .trend { margin-top:6px; font-weight:800; }
 .trend.up { color:var(--primary); }
 .trend.down { color:var(--danger); }
