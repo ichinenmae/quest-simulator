@@ -357,6 +357,24 @@ function animateRegistration(element, done) {
   setTimeout(finish, 360);
 }
 
+function neighborIndexAfterRemoval(index, length) {
+  if (length <= 1) return null;
+  return index > 0 ? index - 1 : 0;
+}
+
+function scrollToPreviewCard(index) {
+  if (index === null || index === undefined) return;
+  requestAnimationFrame(() => document.querySelector(`[data-preview="${index}"]`)?.scrollIntoView({ behavior:"smooth", block:"start" }));
+}
+
+function scrollToQuestCard(questId) {
+  if (!questId) return;
+  requestAnimationFrame(() => {
+    const button = $$(".delete-quest").find(item => item.dataset.id === questId);
+    button?.closest(".panel")?.scrollIntoView({ behavior:"smooth", block:"start" });
+  });
+}
+
 function renderPlan() {
   const plan = activePlan();
   const service = activeService();
@@ -509,7 +527,10 @@ function renderPreview() {
   $$("[data-preview]").forEach(card => {
     bindQuestEditor(card);
     const index = Number(card.dataset.preview);
-    card.querySelector(".cancel-preview").addEventListener("click", () => animateRemoval(card, () => { parsedItems.splice(index,1); renderPreview(); }));
+    card.querySelector(".cancel-preview").addEventListener("click", () => {
+      const scrollIndex = neighborIndexAfterRemoval(index, parsedItems.length);
+      animateRemoval(card, () => { parsedItems.splice(index,1); renderPreview(); scrollToPreviewCard(scrollIndex); });
+    });
     card.querySelector(".register-preview").addEventListener("click", () => {
       const quest = readQuestEditor(card,parsedItems[index].quest.id);
       const result = questValidation(quest,state.services);
@@ -520,7 +541,8 @@ function renderPreview() {
       state.quests.push(quest);
       commit("クエストを登録しました");
       showMessage("解析結果からクエストを登録しました。");
-      animateRegistration(card, () => { parsedItems.splice(index,1); renderPreview(); renderAll(); });
+      const scrollIndex = neighborIndexAfterRemoval(index, parsedItems.length);
+      animateRegistration(card, () => { parsedItems.splice(index,1); renderPreview(); renderAll(); scrollToPreviewCard(scrollIndex); });
     });
   });
 }
@@ -529,7 +551,14 @@ function renderQuestList() {
   const root = $("#quest-list");
   if (!state.quests.length) { root.innerHTML = '<article class="panel empty">登録済みのクエストはありません。</article>'; return; }
   root.innerHTML = state.quests.map(quest => { const svc = state.services.find(item => item.id === quest.serviceId); return `<article class="panel"><div class="panel-heading"><div><span class="badge">${QUEST_KINDS[quest.kind]}</span><h3 style="margin-top:8px">${esc(quest.title)}</h3><p class="helper">${esc(svc?.name || "不明")} / ${quest.milestones.length}段階</p></div><button class="danger-button delete-quest" data-id="${quest.id}">削除</button></div>${quest.milestones.map(item => `<div class="compact-item"><span>${formatNumber(item.count)}件</span><strong>${formatCurrency(item.reward)}</strong></div>`).join("")}</article>`; }).join("");
-  $$(".delete-quest").forEach(button => button.addEventListener("click", () => { const card = button.closest(".panel"); animateRemoval(card, () => { state.quests = state.quests.filter(item => item.id !== button.dataset.id); commit("クエストを削除しました"); renderAll(); }); }));
+  $$(".delete-quest").forEach(button => button.addEventListener("click", () => {
+    const card = button.closest(".panel");
+    const cards = [...$("#quest-list").querySelectorAll(".panel")];
+    const index = cards.indexOf(card);
+    const targetCard = index > 0 ? cards[index - 1] : cards[index + 1];
+    const targetQuestId = targetCard?.querySelector(".delete-quest")?.dataset.id || null;
+    animateRemoval(card, () => { state.quests = state.quests.filter(item => item.id !== button.dataset.id); commit("クエストを削除しました"); renderAll(); scrollToQuestCard(targetQuestId); });
+  }));
 }
 
 function renderSettings() {
