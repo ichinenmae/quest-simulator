@@ -1,5 +1,5 @@
 import { loadState, saveState, resetState, createDefaultPlan, mondayOf } from "./storage.js?v=20260615-12";
-import { planStats, dayPlanStats, periodGoalRows, recommendGoal, periodGoalBasis, projectedAdditionalRewards, weeklyPeriodProjections, weeklyQuestSummaries, weeklyDayForecasts, questIncludesPlanDay, questMaximum, formatCurrency, formatNumber, validateSlots, predictedQuestDeliveries } from "./calculation.js?v=20260615-12";
+import { planStats, dayPlanStats, periodGoalRows, recommendGoal, periodGoalBasis, projectedAdditionalRewards, weeklyPeriodProjections, weeklyQuestSummaries, weeklyDayForecasts, questIncludesPlanDay, questMaximum, formatCurrency, formatNumber, validateSlots, predictedQuestDeliveries, parseTime } from "./calculation.js?v=20260615-12";
 import { QUEST_KINDS, questValidation, newId } from "./quest.js?v=20260615-12";
 import { parseAIText } from "./parser.js?v=20260615-12";
 import { automaticQuestTitle, dateRangeFromDays, daysFromDateRange, defaultTimesForKind } from "./quest-form.js?v=20260615-12";
@@ -303,6 +303,30 @@ function cloneDayPlan(day, targetDay = day.day) {
   };
 }
 
+function normalizeTimeInput(value) {
+  const minute = parseTime(value);
+  if (minute === null) return String(value || "").trim();
+  const hour = Math.floor(minute / 60);
+  const minutes = minute % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function pickerTimeValue(value) {
+  return parseTime(value) === null ? "" : normalizeTimeInput(value);
+}
+
+function crossesBusinessBoundary(slot) {
+  const start = parseTime(slot.start);
+  const end = parseTime(slot.end);
+  if (start === null || end === null) return false;
+  return end > 240 && (end <= start || start < 240);
+}
+
+function nextPlanDay(dayKey) {
+  const index = DAY_KEYS.indexOf(dayKey);
+  return DAY_KEYS[(index + 1) % DAY_KEYS.length];
+}
+
 function questsForWeek(weekStartDate = state.activeWeekStartDate) {
   return state.quests.filter(quest => (quest.sourceWeekStartDate || weekFromQuest(quest)) === weekStartDate);
 }
@@ -507,7 +531,7 @@ function renderPlan() {
 
 function dayCard(day, service, weekStartDate) {
   const stats = dayPlanStats(day, service);
-  const slots = day.slots.map((slot,index) => `<div class="slot-row" data-slot="${index}"><label>開始<input class="slot-start" type="time" value="${esc(slot.start)}"></label><span class="separator">〜</span><label>終了<input class="slot-end" type="time" value="${esc(slot.end)}"></label><button class="icon-button remove-slot" aria-label="稼働枠を削除">×</button></div>`).join("");
+  const slots = day.slots.map((slot,index) => `<div class="slot-row" data-slot="${index}"><label>開始<div class="time-input-pair"><input class="slot-start" type="text" inputmode="numeric" autocomplete="off" placeholder="10:00" value="${esc(slot.start)}"><input class="slot-picker slot-start-picker" type="time" value="${esc(pickerTimeValue(slot.start))}" aria-label="開始時刻を選択"></div></label><span class="separator">〜</span><label>終了<div class="time-input-pair"><input class="slot-end" type="text" inputmode="numeric" autocomplete="off" placeholder="15:00" value="${esc(slot.end)}"><input class="slot-picker slot-end-picker" type="time" value="${esc(pickerTimeValue(slot.end))}" aria-label="終了時刻を選択"></div></label><button class="icon-button remove-slot" aria-label="稼働枠を削除">×</button></div>`).join("");
   const date = dateForPlanDay(weekStartDate, day.day);
   return `<article class="day-card ${day.enabled ? "" : "disabled"}" data-day="${day.day}"><div class="day-header"><div><h3>${DAY_LABELS[day.day]}曜日 <span>${formatShortDate(date)}</span></h3><p>${esc(date)}</p></div><label class="switch"><input class="day-enabled" type="checkbox" ${day.enabled ? "checked" : ""}>稼働する</label></div><div class="slot-list">${slots || '<p class="helper">稼働枠がありません。</p>'}</div><button class="secondary-button add-slot" type="button">稼働枠を追加</button><label style="margin-top:12px">予想件数の手動上書き<input class="manual-count" type="number" min="0" step="0.1" placeholder="自動計算" value="${day.manualDeliveryCount ?? ""}"></label>${stats.errors.length ? `<p class="error-text">${stats.errors.map(esc).join("<br>")}</p>` : ""}<div class="day-stats"><span>稼働 <strong>${formatNumber(stats.hours)}h</strong></span><span>予想 <strong>${formatNumber(stats.deliveries)}件</strong></span></div></article>`;
 }
@@ -562,14 +586,34 @@ function bindDayCard(card) {
   card.querySelector(".manual-count").addEventListener("change", event => { day.manualDeliveryCount = event.target.value === "" ? null : Math.max(0, Number(event.target.value)); commit(); renderAll(); });
   card.querySelectorAll(".slot-row").forEach(row => {
     const index = Number(row.dataset.slot);
-    row.querySelector(".slot-start").addEventListener("change", event => updateSlot(day,index,"start",event.target.value));
-    row.querySelector(".slot-end").addEventListener("change", event => updateSlot(day,index,"end",event.target.value));
+    const bindTimeText = (selector, key) => {
+      const input = row.querySelector(selector);
+      input.addEventListener("blur", event => updateSlot(day,index,key,event.target.value));
+      input.addEventListener("keydown", event => { if (event.key === "Enter") event.currentTarget.blur(); });
+    };
+    bindTimeText(".slot-start", "start");
+    bindTimeText(".slot-end", "end");
+    row.querySelector(".slot-start-picker").addEventListener("change", event => updateSlot(day,index,"start",event.target.value));
+    row.querySelector(".slot-end-picker").addEventListener("change", event => updateSlot(day,index,"end",event.target.value));
     row.querySelector(".remove-slot").addEventListener("click", () => animateRemoval(row, () => { day.slots.splice(index,1); commit(); renderAll(); }));
   });
 }
 
 function updateSlot(day, index, key, value) {
-  day.slots[index][key] = value;
+  day.slots[index][key] = normalizeTimeInput(value);
+  if (crossesBusinessBoundary(day.slots[index])) {
+    const targetKey = nextPlanDay(day.day);
+    const target = activePlan().workSlots.find(item => item.day === targetKey);
+    if (target && window.confirm(`${DAY_LABELS[day.day]}曜日の ${day.slots[index].start}-${day.slots[index].end} は04:00をまたぎます。${DAY_LABELS[targetKey]}曜日へ移動しますか？`)) {
+      const [slot] = day.slots.splice(index, 1);
+      target.enabled = true;
+      target.slots.push(slot);
+      commit("04:00をまたぐ稼働枠を翌日に移動しました");
+      showMessage("04:00をまたぐ稼働枠を翌日に移動しました。");
+      renderAll();
+      return;
+    }
+  }
   const errors = validateSlots(day.slots);
   if (!errors.length) commit("稼働枠を保存しました");
   renderAll();
@@ -743,7 +787,7 @@ function renderQuestList() {
   const root = $("#quest-list");
   const quests = visibleQuests();
   if (!quests.length) { root.innerHTML = '<article class="panel empty">この週の登録済みクエストはありません。</article>'; return; }
-  root.innerHTML = `<div class="bulk-toolbar"><label class="bulk-check"><input id="quest-select-all" type="checkbox">すべて選択</label><div class="bulk-actions"><button id="delete-selected-quests" class="danger-button" type="button">選択を削除</button><button id="delete-all-quests" class="danger-button" type="button">この週をすべて削除</button></div></div>` + quests.map(quest => { const svc = state.services.find(item => item.id === quest.serviceId); return `<article class="panel"><div class="panel-heading"><div><span class="badge">${QUEST_KINDS[quest.kind]}</span><h3 style="margin-top:8px">${esc(quest.title)}</h3><p class="helper">${esc(svc?.name || "不明")} / ${quest.milestones.length}段階</p></div><div class="card-actions"><label class="card-check"><input class="quest-select" type="checkbox" value="${esc(quest.id)}">選択</label><button class="danger-button delete-quest" data-id="${quest.id}">削除</button></div></div>${quest.milestones.map(item => `<div class="compact-item"><span>${formatNumber(item.count)}件</span><strong>${formatCurrency(item.reward)}</strong></div>`).join("")}</article>`; }).join("");
+  root.innerHTML = `<div class="bulk-toolbar"><label class="bulk-check"><input id="quest-select-all" type="checkbox">すべて選択</label><div class="bulk-actions"><button id="delete-selected-quests" class="danger-button" type="button">選択を削除</button><button id="delete-all-quests" class="danger-button" type="button">この週をすべて削除</button></div></div>` + quests.map(quest => { const svc = state.services.find(item => item.id === quest.serviceId); return `<article class="panel"><div class="panel-heading"><div><span class="badge">${QUEST_KINDS[quest.kind]}</span><h3 style="margin-top:8px">${esc(quest.title)}</h3><p class="helper">${esc(svc?.name || "不明")} / ${quest.milestones.length}段階</p><p class="quest-meta">${esc(questScheduleLabel(quest))}</p></div><div class="card-actions"><label class="card-check"><input class="quest-select" type="checkbox" value="${esc(quest.id)}">選択</label><button class="danger-button delete-quest" data-id="${quest.id}">削除</button></div></div>${quest.milestones.map(item => `<div class="compact-item"><span>${formatNumber(item.count)}件</span><strong>${formatCurrency(item.reward)}</strong></div>`).join("")}</article>`; }).join("");
   $("#quest-select-all")?.addEventListener("change", event => $$(".quest-select").forEach(input => { input.checked = event.target.checked; }));
   $("#delete-selected-quests")?.addEventListener("click", () => deleteQuestBatch(selectedQuestIds(), "選択したクエスト"));
   $("#delete-all-quests")?.addEventListener("click", () => deleteQuestBatch(quests.map(quest => quest.id), "この週のすべてのクエスト"));
@@ -917,7 +961,7 @@ function questSummaryCard(item) {
   const maxReward = item.maximum.unlimited ? "上限なし" : formatCurrency(item.maximum.reward);
   const scheduleButton = item.quest.startTime && item.quest.endTime ? `<button class="secondary-button add-quest-schedule" type="button" data-quest-id="${item.quest.id}">時間帯を予定に追加</button>` : "";
   const periodState = item.basis ? ` / ${item.basis.source === "confirmed" ? "選択" : "推奨"}${formatNumber(item.maximum.count)}件` : "";
-  return `<article class="quest-summary ${tone}"><div class="quest-summary-main"><div><span class="badge">${QUEST_KINDS[item.quest.kind]}</span><strong>${esc(item.quest.title)}</strong><p>${formatNumber(item.predictedCount)}件見込み${periodState}</p>${questTrendBadge(item)}</div><div class="quest-rewards"><span>最大 ${maxReward}</span><b>見込 ${formatCurrency(item.projectedReward)}</b></div></div>${scheduleButton}</article>`;
+  return `<article class="quest-summary ${tone}"><div class="quest-summary-main"><div><span class="badge">${QUEST_KINDS[item.quest.kind]}</span><strong>${esc(item.quest.title)}</strong><p class="quest-meta">${esc(questScheduleLabel(item.quest))}</p><p>${formatNumber(item.predictedCount)}件見込み${periodState}</p>${questTrendBadge(item)}</div><div class="quest-rewards"><span>最大 ${maxReward}</span><b>見込 ${formatCurrency(item.projectedReward)}</b></div></div>${scheduleButton}</article>`;
 }
 
 function questTrendBadge(item) {

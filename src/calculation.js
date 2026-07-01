@@ -1,21 +1,37 @@
 export const BUSINESS_DAY_START_HOUR = 4;
 
 export function parseTime(value) {
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value || "")) return null;
-  const [hour, minute] = value.split(":").map(Number);
+  const text = String(value || "").trim().replace("：", ":");
+  let hour;
+  let minute;
+  const colon = text.match(/^(\d{1,2}):([0-5]\d)$/);
+  const compact = text.match(/^(\d{3,4})$/);
+  const hourOnly = text.match(/^(\d{1,2})$/);
+  if (colon) [, hour, minute] = colon;
+  else if (compact) {
+    hour = text.slice(0, -2);
+    minute = text.slice(-2);
+  } else if (hourOnly) {
+    hour = hourOnly[1];
+    minute = "00";
+  } else return null;
+  hour = Number(hour);
+  minute = Number(minute);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
   return hour * 60 + minute;
 }
 
-export function businessMinute(value, boundaryHour = BUSINESS_DAY_START_HOUR) {
+export function businessMinute(value, boundaryHour = BUSINESS_DAY_START_HOUR, isEnd = false) {
   const minute = parseTime(value);
   if (minute === null) return null;
   const boundary = boundaryHour * 60;
+  if (isEnd && minute === boundary) return 1440;
   return minute < boundary ? minute + 1440 - boundary : minute - boundary;
 }
 
 export function slotDurationHours(slot, boundaryHour = BUSINESS_DAY_START_HOUR) {
   const start = businessMinute(slot.start, boundaryHour);
-  const end = businessMinute(slot.end, boundaryHour);
+  const end = businessMinute(slot.end, boundaryHour, true);
   if (start === null || end === null || start === end) return NaN;
   if (end <= start) return NaN;
   return (end - start) / 60;
@@ -26,7 +42,7 @@ export function validateSlots(slots, boundaryHour = BUSINESS_DAY_START_HOUR) {
   const ranges = [];
   slots.forEach((slot, index) => {
     const start = businessMinute(slot.start, boundaryHour);
-    const end = businessMinute(slot.end, boundaryHour);
+    const end = businessMinute(slot.end, boundaryHour, true);
     if (start === null || end === null) errors.push(`${index + 1}枠目の時刻形式が不正です。`);
     else if (end <= start) errors.push(`${index + 1}枠目は営業日04:00を越えるか、終了が開始以前です。`);
     else ranges.push({ start, end, index });
@@ -38,9 +54,9 @@ export function validateSlots(slots, boundaryHour = BUSINESS_DAY_START_HOUR) {
 
 export function slotOverlapHours(slot, window, boundaryHour = BUSINESS_DAY_START_HOUR) {
   const slotStart = businessMinute(slot.start, boundaryHour);
-  const slotEnd = businessMinute(slot.end, boundaryHour);
+  const slotEnd = businessMinute(slot.end, boundaryHour, true);
   const windowStart = businessMinute(window.start, boundaryHour);
-  const windowEnd = businessMinute(window.end, boundaryHour);
+  const windowEnd = businessMinute(window.end, boundaryHour, true);
   if ([slotStart, slotEnd, windowStart, windowEnd].some(value => value === null) || slotEnd <= slotStart || windowEnd <= windowStart) return 0;
   return Math.max(0, Math.min(slotEnd, windowEnd) - Math.max(slotStart, windowStart)) / 60;
 }
