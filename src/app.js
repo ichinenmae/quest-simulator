@@ -5,6 +5,7 @@ import { parseAIText } from "./parser.js?v=20260615-12";
 import { automaticQuestTitle, dateRangeFromDays, daysFromDateRange, defaultTimesForKind } from "./quest-form.js?v=20260615-12";
 
 const DAY_LABELS = { mon:"月", tue:"火", wed:"水", thu:"木", fri:"金", sat:"土", sun:"日" };
+const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const SCREEN_TITLES = { dashboard:"今週の概要", plan:"週間計画", quests:"クエスト入力", goals:"期間クエスト選択", history:"過去クエスト閲覧", settings:"設定" };
 const SAMPLE_TEXT = `QUEST_TYPE: PERIOD
 SERVICE: Uber
@@ -264,6 +265,44 @@ function previousWeekStart(weekStartDate = state.activeWeekStartDate) {
   return mondayOf(date);
 }
 
+function dateForPlanDay(weekStartDate, dayKey) {
+  const index = DAY_KEYS.indexOf(dayKey);
+  const [year, month, day] = weekStartDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + Math.max(0, index));
+  return formatLocalDate(date);
+}
+
+function formatShortDate(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function formatWeekRange(weekStartDate) {
+  const start = weekStartDate;
+  const [year, month, day] = weekStartDate.split("-").map(Number);
+  const end = new Date(year, month - 1, day);
+  end.setDate(end.getDate() + 6);
+  return `${formatShortDate(start)}-${formatShortDate(formatLocalDate(end))}`;
+}
+
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function cloneDayPlan(day, targetDay = day.day) {
+  return {
+    day: targetDay,
+    enabled: !!day.enabled,
+    slots: (day.slots || []).map(slot => ({ ...slot })),
+    manualDeliveryCount: day.manualDeliveryCount ?? null
+  };
+}
+
 function questsForWeek(weekStartDate = state.activeWeekStartDate) {
   return state.quests.filter(quest => (quest.sourceWeekStartDate || weekFromQuest(quest)) === weekStartDate);
 }
@@ -460,14 +499,60 @@ function renderPlan() {
   const service = activeService();
   $("#week-start").value = plan.weekStartDate;
   $("#plan-service").innerHTML = state.services.filter(item => item.enabled).map(item => `<option value="${esc(item.id)}" ${item.id === plan.serviceId ? "selected" : ""}>${esc(item.name)}</option>`).join("");
-  $("#week-days").innerHTML = plan.workSlots.map(day => dayCard(day, service)).join("");
+  $("#week-status").innerHTML = plan.weekStartDate < mondayOf() ? `<div class="week-alert">過去の週を表示中です。${esc(formatWeekRange(plan.weekStartDate))} の予定を編集しています。</div>` : "";
+  renderPlanCopyTools();
+  $("#week-days").innerHTML = plan.workSlots.map(day => dayCard(day, service, plan.weekStartDate)).join("");
   $$(".day-card").forEach(card => bindDayCard(card));
 }
 
-function dayCard(day, service) {
+function dayCard(day, service, weekStartDate) {
   const stats = dayPlanStats(day, service);
   const slots = day.slots.map((slot,index) => `<div class="slot-row" data-slot="${index}"><label>開始<input class="slot-start" type="time" value="${esc(slot.start)}"></label><span class="separator">〜</span><label>終了<input class="slot-end" type="time" value="${esc(slot.end)}"></label><button class="icon-button remove-slot" aria-label="稼働枠を削除">×</button></div>`).join("");
-  return `<article class="day-card ${day.enabled ? "" : "disabled"}" data-day="${day.day}"><div class="day-header"><h3>${DAY_LABELS[day.day]}曜日</h3><label class="switch"><input class="day-enabled" type="checkbox" ${day.enabled ? "checked" : ""}>稼働する</label></div><div class="slot-list">${slots || '<p class="helper">稼働枠がありません。</p>'}</div><button class="secondary-button add-slot" type="button">稼働枠を追加</button><label style="margin-top:12px">予想件数の手動上書き<input class="manual-count" type="number" min="0" step="0.1" placeholder="自動計算" value="${day.manualDeliveryCount ?? ""}"></label>${stats.errors.length ? `<p class="error-text">${stats.errors.map(esc).join("<br>")}</p>` : ""}<div class="day-stats"><span>稼働 <strong>${formatNumber(stats.hours)}h</strong></span><span>予想 <strong>${formatNumber(stats.deliveries)}件</strong></span></div></article>`;
+  const date = dateForPlanDay(weekStartDate, day.day);
+  return `<article class="day-card ${day.enabled ? "" : "disabled"}" data-day="${day.day}"><div class="day-header"><div><h3>${DAY_LABELS[day.day]}曜日 <span>${formatShortDate(date)}</span></h3><p>${esc(date)}</p></div><label class="switch"><input class="day-enabled" type="checkbox" ${day.enabled ? "checked" : ""}>稼働する</label></div><div class="slot-list">${slots || '<p class="helper">稼働枠がありません。</p>'}</div><button class="secondary-button add-slot" type="button">稼働枠を追加</button><label style="margin-top:12px">予想件数の手動上書き<input class="manual-count" type="number" min="0" step="0.1" placeholder="自動計算" value="${day.manualDeliveryCount ?? ""}"></label>${stats.errors.length ? `<p class="error-text">${stats.errors.map(esc).join("<br>")}</p>` : ""}<div class="day-stats"><span>稼働 <strong>${formatNumber(stats.hours)}h</strong></span><span>予想 <strong>${formatNumber(stats.deliveries)}件</strong></span></div></article>`;
+}
+
+function renderPlanCopyTools() {
+  const root = $("#plan-copy-tools");
+  if (!root) return;
+  const sourcePlans = state.weeklyPlans
+    .filter(plan => plan.weekStartDate !== state.activeWeekStartDate)
+    .sort((a, b) => b.weekStartDate.localeCompare(a.weekStartDate));
+  if (!sourcePlans.length) {
+    root.innerHTML = '<p class="empty">コピーできる過去の稼働予定はまだありません。</p>';
+    return;
+  }
+  const weekOptions = sourcePlans.map(plan => `<option value="${esc(plan.weekStartDate)}">${esc(plan.weekStartDate)}（${esc(formatWeekRange(plan.weekStartDate))}）</option>`).join("");
+  const dayOptions = DAY_KEYS.map(day => `<option value="${day}">${DAY_LABELS[day]}曜日 ${formatShortDate(dateForPlanDay(state.activeWeekStartDate, day))}</option>`).join("");
+  root.innerHTML = `<div class="copy-tool-grid"><div class="copy-tool"><h3>1週間分コピー</h3><label>コピー元の週<select id="copy-week-source">${weekOptions}</select></label><button id="copy-week-plan" class="primary-button" type="button">この週へ1週間分コピー</button></div><div class="copy-tool"><h3>1日分コピー</h3><div class="form-grid two"><label>コピー元の週<select id="copy-day-week">${weekOptions}</select></label><label>コピー元の日<select id="copy-day-source">${DAY_KEYS.map(day => `<option value="${day}">${DAY_LABELS[day]}曜日</option>`).join("")}</select></label><label>コピー先の日<select id="copy-day-target">${dayOptions}</select></label></div><button id="copy-day-plan" class="secondary-button" type="button">指定した1日へコピー</button></div></div>`;
+  $("#copy-week-plan").addEventListener("click", copyWeekPlan);
+  $("#copy-day-plan").addEventListener("click", copyDayPlan);
+}
+
+function copyWeekPlan() {
+  const sourceWeek = $("#copy-week-source")?.value;
+  const source = state.weeklyPlans.find(plan => plan.weekStartDate === sourceWeek);
+  if (!source) return showMessage("コピー元の週が見つかりません。", true);
+  if (!window.confirm(`${source.weekStartDate} の1週間分を ${activePlan().weekStartDate} へコピーします。現在の稼働予定は置き換わります。よろしいですか？`)) return;
+  activePlan().workSlots = DAY_KEYS.map(day => cloneDayPlan(source.workSlots.find(item => item.day === day) || { day, enabled:false, slots:[], manualDeliveryCount:null }, day));
+  commit("1週間分の稼働予定をコピーしました");
+  showMessage("1週間分の稼働予定をコピーしました。");
+  renderAll();
+}
+
+function copyDayPlan() {
+  const sourceWeek = $("#copy-day-week")?.value;
+  const sourceDay = $("#copy-day-source")?.value;
+  const targetDay = $("#copy-day-target")?.value;
+  const source = state.weeklyPlans.find(plan => plan.weekStartDate === sourceWeek);
+  const sourceSlot = source?.workSlots.find(day => day.day === sourceDay);
+  const targetIndex = activePlan().workSlots.findIndex(day => day.day === targetDay);
+  if (!sourceSlot || targetIndex < 0) return showMessage("コピー元またはコピー先の日が見つかりません。", true);
+  if (!window.confirm(`${source.weekStartDate} の${DAY_LABELS[sourceDay]}曜日を ${formatShortDate(dateForPlanDay(activePlan().weekStartDate,targetDay))} ${DAY_LABELS[targetDay]}曜日へコピーします。コピー先の日の予定は置き換わります。よろしいですか？`)) return;
+  activePlan().workSlots[targetIndex] = cloneDayPlan(sourceSlot, targetDay);
+  commit("1日分の稼働予定をコピーしました");
+  showMessage("1日分の稼働予定をコピーしました。");
+  renderAll();
 }
 
 function bindDayCard(card) {
