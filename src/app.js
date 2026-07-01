@@ -348,6 +348,15 @@ function animateRemoval(element, remove) {
   setTimeout(finish, 240);
 }
 
+function animateRegistration(element, done) {
+  if (!element || element.classList.contains("registered")) return;
+  let finished = false;
+  const finish = () => { if (finished) return; finished = true; done(); };
+  element.classList.add("registered");
+  element.addEventListener("animationend", finish, { once:true });
+  setTimeout(finish, 360);
+}
+
 function renderPlan() {
   const plan = activePlan();
   const service = activeService();
@@ -501,7 +510,18 @@ function renderPreview() {
     bindQuestEditor(card);
     const index = Number(card.dataset.preview);
     card.querySelector(".cancel-preview").addEventListener("click", () => animateRemoval(card, () => { parsedItems.splice(index,1); renderPreview(); }));
-    card.querySelector(".register-preview").addEventListener("click", () => { const quest = readQuestEditor(card,parsedItems[index].quest.id); const result = questValidation(quest,state.services); showEditorIssues(card,result); if (result.errors.length) return; state.quests.push(quest); parsedItems.splice(index,1); commit("クエストを登録しました"); showMessage("解析結果からクエストを登録しました。"); renderPreview(); renderAll(); });
+    card.querySelector(".register-preview").addEventListener("click", () => {
+      const quest = readQuestEditor(card,parsedItems[index].quest.id);
+      const result = questValidation(quest,state.services);
+      showEditorIssues(card,result);
+      if (result.errors.length) return;
+      const button = card.querySelector(".register-preview");
+      button.disabled = true;
+      state.quests.push(quest);
+      commit("クエストを登録しました");
+      showMessage("解析結果からクエストを登録しました。");
+      animateRegistration(card, () => { parsedItems.splice(index,1); renderPreview(); renderAll(); });
+    });
   });
 }
 
