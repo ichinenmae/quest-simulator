@@ -1,11 +1,11 @@
-import { loadState, saveState, createDefaultPlan, mondayOf } from "./storage.js?v=20260615-12";
-import { planStats, dayPlanStats, periodGoalRows, recommendGoal, periodGoalBasis, projectedAdditionalRewards, weeklyPeriodProjections, weeklyQuestSummaries, weeklyDayForecasts, questIncludesPlanDay, formatCurrency, formatNumber, validateSlots, predictedQuestDeliveries } from "./calculation.js?v=20260615-12";
+import { loadState, saveState, resetState, createDefaultPlan, mondayOf } from "./storage.js?v=20260615-12";
+import { planStats, dayPlanStats, periodGoalRows, recommendGoal, periodGoalBasis, projectedAdditionalRewards, weeklyPeriodProjections, weeklyQuestSummaries, weeklyDayForecasts, questIncludesPlanDay, questMaximum, formatCurrency, formatNumber, validateSlots, predictedQuestDeliveries } from "./calculation.js?v=20260615-12";
 import { QUEST_KINDS, questValidation, newId } from "./quest.js?v=20260615-12";
 import { parseAIText } from "./parser.js?v=20260615-12";
 import { automaticQuestTitle, dateRangeFromDays, daysFromDateRange, defaultTimesForKind } from "./quest-form.js?v=20260615-12";
 
 const DAY_LABELS = { mon:"月", tue:"火", wed:"水", thu:"木", fri:"金", sat:"土", sun:"日" };
-const SCREEN_TITLES = { dashboard:"今週の概要", plan:"週間計画", quests:"クエスト入力", goals:"期間クエスト選択", settings:"設定" };
+const SCREEN_TITLES = { dashboard:"今週の概要", plan:"週間計画", quests:"クエスト入力", goals:"期間クエスト選択", history:"過去クエスト閲覧", settings:"設定" };
 const SAMPLE_TEXT = `QUEST_TYPE: PERIOD
 SERVICE: Uber
 TITLE: 月〜木 期間クエスト
@@ -243,9 +243,64 @@ let manualTitleEdited = false;
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
-const activePlan = () => state.weeklyPlans[0] || (state.weeklyPlans[0] = createDefaultPlan());
+const activePlan = () => planForWeek(state.activeWeekStartDate);
 const activeService = () => state.services.find(item => item.id === activePlan().serviceId) || state.services[0];
 manualDraft = createManualDraft();
+
+function planForWeek(weekStartDate) {
+  const week = weekStartDate || mondayOf();
+  let plan = state.weeklyPlans.find(item => item.weekStartDate === week);
+  if (!plan) {
+    plan = createDefaultPlan(week, state.weeklyPlans[0]?.serviceId || state.services[0]?.id);
+    state.weeklyPlans.unshift(plan);
+  }
+  return plan;
+}
+
+function previousWeekStart(weekStartDate = state.activeWeekStartDate) {
+  const [year, month, day] = weekStartDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() - 7);
+  return mondayOf(date);
+}
+
+function questsForWeek(weekStartDate = state.activeWeekStartDate) {
+  return state.quests.filter(quest => (quest.sourceWeekStartDate || weekFromQuest(quest)) === weekStartDate);
+}
+
+function visibleQuests() {
+  return questsForWeek(state.activeWeekStartDate);
+}
+
+function stampQuest(quest) {
+  const now = new Date().toISOString();
+  return { createdAt:quest.createdAt || now, sourceWeekStartDate:state.activeWeekStartDate, lastSeenWeekStartDate:state.activeWeekStartDate, ...quest };
+}
+
+function questCompareKey(quest) {
+  const days = (quest.daysOfWeek || []).join(",");
+  const time = quest.startTime || quest.endTime ? `${quest.startTime || ""}-${quest.endTime || ""}` : "";
+  return [quest.serviceId, quest.kind, days, time].join("|");
+}
+
+function maxRewardValue(quest, summary = null) {
+  const maximum = summary?.maximum || questMaximumForDisplay(quest);
+  return maximum.unlimited ? null : Number(maximum.reward || 0);
+}
+
+function questMaximumForDisplay(quest) {
+  return questMaximum(quest);
+}
+
+function previousQuestSummary(item) {
+  const previous = questsForWeek(previousWeekStart()).find(quest => questCompareKey(quest) === questCompareKey(item.quest));
+  if (!previous) return null;
+  return { quest:previous, reward:maxRewardValue(previous) };
+}
+
+function weekFromQuest(quest) {
+  return quest?.startDate ? normalizeMonday(quest.startDate) : state.activeWeekStartDate;
+}
 
 init();
 
@@ -267,13 +322,14 @@ function bindNavigation() {
 }
 
 function bindStaticActions() {
-  $("#week-start").addEventListener("change", event => { activePlan().weekStartDate = normalizeMonday(event.target.value); activePlan().id = `plan_${activePlan().weekStartDate}`; commit("対象週を保存しました"); renderAll(); });
+  $("#week-start").addEventListener("change", event => { state.activeWeekStartDate = normalizeMonday(event.target.value); planForWeek(state.activeWeekStartDate); commit("対象週を保存しました"); renderAll(); });
   $("#plan-service").addEventListener("change", event => { activePlan().serviceId = event.target.value; commit("計画サービスを保存しました"); renderAll(); });
   $("#fill-sample").addEventListener("click", () => { $("#ai-input").value = SAMPLE_TEXT; });
   $("#open-gemini").addEventListener("click", openGeminiWithPrompt);
   $("#parse-ai").addEventListener("click", parseInput);
   $("#add-service").addEventListener("click", () => { state.services.push({ id:newId("svc"), name:"新しいサービス", baseRewardPerDelivery:500, deliveriesPerHour:3, enabled:true }); commit("サービスを追加しました"); renderSettings(); });
   $("#save-settings").addEventListener("click", () => { state.settings.marginCount = Math.max(0, Number($("#margin-count").value)); state.settings.allowedAdditionalHours = Math.max(0, Number($("#allowed-hours").value)); commit("判定基準を保存しました"); renderAll(); });
+  $("#reset-storage")?.addEventListener("click", resetStorageWithConfirm);
 }
 
 async function openGeminiWithPrompt() {
@@ -320,12 +376,24 @@ function showScreen(name) {
 }
 
 function renderAll() {
-  renderPlan(); renderManualForm(); renderQuestList(); renderSettings(); renderGoals(); renderDashboard();
+  renderPlan(); renderManualForm(); renderQuestList(); renderSettings(); renderGoals(); renderHistory(); renderDashboard();
+}
+
+function resetStorageWithConfirm() {
+  if (!window.confirm("保存データをすべて初期化します。登録済みクエストと稼働予定も削除されます。よろしいですか？")) return;
+  if (!window.confirm("本当に初期化しますか？この操作は元に戻せません。")) return;
+  resetState();
+  location.reload();
 }
 
 function commit(message) {
-  saveState(state);
+  const result = saveState(state);
   const status = $("#save-status");
+  if (result && !result.ok) {
+    status.textContent = "保存失敗";
+    showMessage("保存容量の上限に達した可能性があります。過去データを整理するか、保存データを初期化してください。", true);
+    return;
+  }
   status.textContent = message || "保存済み";
   clearTimeout(commit.timer);
   commit.timer = setTimeout(() => { status.textContent = "保存済み"; }, 1600);
@@ -435,7 +503,7 @@ function renderManualForm() {
     const result = questValidation(quest,state.services);
     showEditorIssues(event.currentTarget,result);
     if (result.errors.length) return;
-    state.quests.push(quest);
+    state.quests.push(stampQuest(quest));
     manualDraft = createManualDraft();
     manualTitleEdited = false;
     commit("クエストを登録しました");
@@ -553,7 +621,7 @@ function renderPreview() {
       if (result.errors.length) return;
       const button = card.querySelector(".register-preview");
       button.disabled = true;
-      state.quests.push(quest);
+      state.quests.push(stampQuest(quest));
       commit("クエストを登録しました");
       showMessage("解析結果からクエストを登録しました。");
       animateRegistration(card, () => { parsedItems.splice(index,1); renderPreview(); renderAll(); });
@@ -577,7 +645,7 @@ async function registerPreviewBatch(indexes, label) {
   if (items.some(item => item.result.errors.length)) return showMessage("エラーがあるため一括登録できません。赤い表示の項目を修正してください。", true);
   if (!window.confirm(`${label} ${items.length}件を登録します。よろしいですか？`)) return;
   items.forEach(item => item.card.querySelectorAll("button,input,select,textarea").forEach(control => { control.disabled = true; }));
-  state.quests.push(...items.map(item => item.quest));
+  state.quests.push(...items.map(item => stampQuest(item.quest)));
   commit(`${items.length}件のクエストを登録しました`);
   showMessage(`${items.length}件のクエストを登録しました。`);
   await Promise.all(items.map(item => animateCardExitPromise(item.card, "registered")));
@@ -588,11 +656,12 @@ async function registerPreviewBatch(indexes, label) {
 
 function renderQuestList() {
   const root = $("#quest-list");
-  if (!state.quests.length) { root.innerHTML = '<article class="panel empty">登録済みのクエストはありません。</article>'; return; }
-  root.innerHTML = `<div class="bulk-toolbar"><label class="bulk-check"><input id="quest-select-all" type="checkbox">すべて選択</label><div class="bulk-actions"><button id="delete-selected-quests" class="danger-button" type="button">選択を削除</button><button id="delete-all-quests" class="danger-button" type="button">すべて削除</button></div></div>` + state.quests.map(quest => { const svc = state.services.find(item => item.id === quest.serviceId); return `<article class="panel"><div class="panel-heading"><div><span class="badge">${QUEST_KINDS[quest.kind]}</span><h3 style="margin-top:8px">${esc(quest.title)}</h3><p class="helper">${esc(svc?.name || "不明")} / ${quest.milestones.length}段階</p></div><div class="card-actions"><label class="card-check"><input class="quest-select" type="checkbox" value="${esc(quest.id)}">選択</label><button class="danger-button delete-quest" data-id="${quest.id}">削除</button></div></div>${quest.milestones.map(item => `<div class="compact-item"><span>${formatNumber(item.count)}件</span><strong>${formatCurrency(item.reward)}</strong></div>`).join("")}</article>`; }).join("");
+  const quests = visibleQuests();
+  if (!quests.length) { root.innerHTML = '<article class="panel empty">この週の登録済みクエストはありません。</article>'; return; }
+  root.innerHTML = `<div class="bulk-toolbar"><label class="bulk-check"><input id="quest-select-all" type="checkbox">すべて選択</label><div class="bulk-actions"><button id="delete-selected-quests" class="danger-button" type="button">選択を削除</button><button id="delete-all-quests" class="danger-button" type="button">この週をすべて削除</button></div></div>` + quests.map(quest => { const svc = state.services.find(item => item.id === quest.serviceId); return `<article class="panel"><div class="panel-heading"><div><span class="badge">${QUEST_KINDS[quest.kind]}</span><h3 style="margin-top:8px">${esc(quest.title)}</h3><p class="helper">${esc(svc?.name || "不明")} / ${quest.milestones.length}段階</p></div><div class="card-actions"><label class="card-check"><input class="quest-select" type="checkbox" value="${esc(quest.id)}">選択</label><button class="danger-button delete-quest" data-id="${quest.id}">削除</button></div></div>${quest.milestones.map(item => `<div class="compact-item"><span>${formatNumber(item.count)}件</span><strong>${formatCurrency(item.reward)}</strong></div>`).join("")}</article>`; }).join("");
   $("#quest-select-all")?.addEventListener("change", event => $$(".quest-select").forEach(input => { input.checked = event.target.checked; }));
   $("#delete-selected-quests")?.addEventListener("click", () => deleteQuestBatch(selectedQuestIds(), "選択したクエスト"));
-  $("#delete-all-quests")?.addEventListener("click", () => deleteQuestBatch(state.quests.map(quest => quest.id), "すべてのクエスト"));
+  $("#delete-all-quests")?.addEventListener("click", () => deleteQuestBatch(quests.map(quest => quest.id), "この週のすべてのクエスト"));
   $$(".delete-quest").forEach(button => button.addEventListener("click", () => {
     const card = button.closest(".panel");
     animateRemoval(card, () => { state.quests = state.quests.filter(item => item.id !== button.dataset.id); commit("クエストを削除しました"); renderAll(); });
@@ -623,10 +692,10 @@ function renderSettings() {
   });
 }
 
-function periodQuests() { return state.quests.filter(item => item.kind === "period" && item.serviceId === activePlan().serviceId); }
+function periodQuests() { return visibleQuests().filter(item => item.kind === "period" && item.serviceId === activePlan().serviceId); }
 
 function relatedQuestsWithPredictions(periodQuest) {
-  return state.quests.filter(item => item.serviceId===periodQuest.serviceId && item.kind!=="period").map(item => ({ ...item, predictedCount:predictedQuestDeliveries(item,activePlan(),activeService(),periodQuest) }));
+  return visibleQuests().filter(item => item.serviceId===periodQuest.serviceId && item.kind!=="period").map(item => ({ ...item, predictedCount:predictedQuestDeliveries(item,activePlan(),activeService(),periodQuest) }));
 }
 
 function renderGoals() {
@@ -665,13 +734,84 @@ function relatedDetails(row) {
   return `<details class="related-details"><summary>${row.relatedReward ? `関連 +${formatCurrency(row.relatedReward)}` : "関連報酬を見る"}</summary><div><ul>${items}</ul><p><span>関連報酬込み売上</span><strong>${formatCurrency(row.totalRevenue)}</strong></p><p><span>関連報酬込み時給</span><strong>${formatCurrency(row.totalHourly)}/h</strong></p></div></details>`;
 }
 
+function renderHistory() {
+  const summaryRoot = $("#history-summary");
+  const tableRoot = $("#history-table");
+  if (!summaryRoot || !tableRoot) return;
+  const weeks = historyWeeks();
+  if (!weeks.length) {
+    summaryRoot.innerHTML = '<p class="empty">保存済みの過去クエストはありません。</p>';
+    tableRoot.innerHTML = "";
+    return;
+  }
+  const totals = weeks.map(week => ({ week, total:weekMaxReward(week) }));
+  summaryRoot.innerHTML = `<div class="history-total-grid">${totals.map(item => `<div class="history-total"><span>${esc(item.week)}</span><strong>${formatCurrency(item.total)}</strong></div>`).join("")}</div>`;
+  tableRoot.innerHTML = `<div class="table-scroll"><table><thead><tr><th>週</th><th>種別</th><th>クエスト</th><th>曜日/時間</th><th>最大報酬</th><th>前週比</th><th>操作</th></tr></thead><tbody>${weeks.flatMap(week => historyRows(week)).join("")}</tbody></table></div>`;
+  $$(".copy-history-quest").forEach(button => button.addEventListener("click", () => copyHistoryQuest(button.dataset.id)));
+}
+
+function historyWeeks() {
+  const weeks = new Set(state.weeklyPlans.map(plan => plan.weekStartDate));
+  state.quests.forEach(quest => weeks.add(quest.sourceWeekStartDate || weekFromQuest(quest)));
+  return [...weeks].filter(Boolean).sort((a,b) => b.localeCompare(a));
+}
+
+function weekMaxReward(week) {
+  return questsForWeek(week).reduce((sum,quest) => sum + (maxRewardValue(quest) || 0), 0);
+}
+
+function historyRows(week) {
+  return questsForWeek(week).map(quest => {
+    const reward = maxRewardValue(quest);
+    const diff = historyDiff(quest, week, reward);
+    const copy = week === state.activeWeekStartDate ? "" : `<button class="secondary-button copy-history-quest" type="button" data-id="${esc(quest.id)}">今週へコピー</button>`;
+    return `<tr><td>${esc(week)}</td><td>${QUEST_KINDS[quest.kind] || esc(quest.kind)}</td><td>${esc(quest.title)}</td><td>${esc(questScheduleLabel(quest))}</td><td>${reward == null ? "上限なし" : formatCurrency(reward)}</td><td>${diff}</td><td>${copy}</td></tr>`;
+  });
+}
+
+function historyDiff(quest, week, reward) {
+  const previous = questsForWeek(previousWeekStart(week)).find(item => questCompareKey(item) === questCompareKey(quest));
+  if (!previous || reward == null) return "前週なし";
+  const previousReward = maxRewardValue(previous);
+  if (previousReward == null) return "比較不可";
+  const diff = reward - previousReward;
+  const sign = diff > 0 ? "+" : "";
+  return `${sign}${formatCurrency(diff)}`;
+}
+
+function questScheduleLabel(quest) {
+  const days = (quest.daysOfWeek || []).map(day => DAY_LABELS[day]).join("・") || "曜日未設定";
+  const time = quest.startTime || quest.endTime ? ` ${quest.startTime || "--:--"}-${quest.endTime || "--:--"}` : "";
+  return `${days}${time}`;
+}
+
+function copyHistoryQuest(id) {
+  const source = state.quests.find(quest => quest.id === id);
+  if (!source) return;
+  const range = dateRangeFromDays(source.daysOfWeek || [], state.activeWeekStartDate);
+  const copy = stampQuest({
+    ...source,
+    id:newId(),
+    title:source.title,
+    startDate:range.startDate || source.startDate,
+    endDate:range.endDate || source.endDate,
+    selectedGoalCount:null,
+    selectedGoalConfirmedAt:null
+  });
+  state.quests.push(copy);
+  commit("過去クエストを今週へコピーしました");
+  showMessage("過去クエストを今週へコピーしました。");
+  renderAll();
+}
+
 function renderDashboard() {
   const service = activeService();
+  const quests = visibleQuests();
   const stats = planStats(activePlan(),service);
   const baseRevenue = stats.deliveries * Number(service?.baseRewardPerDelivery || 0);
-  const projections = weeklyPeriodProjections(state.quests,activePlan(),service,state.settings);
+  const projections = weeklyPeriodProjections(quests,activePlan(),service,state.settings);
   const questRevenue = projections.reduce((sum,item) => sum + item.reward,0);
-  const additional = projectedAdditionalRewards(state.quests,activePlan(),service);
+  const additional = projectedAdditionalRewards(quests,activePlan(),service);
   const totalRevenue = baseRevenue + questRevenue + additional.total;
   const hourly = stats.hours ? totalRevenue/stats.hours : 0;
   const targetCount = projections.reduce((sum,item) => sum + item.basis.row.count,0);
@@ -679,10 +819,10 @@ function renderDashboard() {
   const revenueDetail = `配達${formatCurrency(baseRevenue)} + 期間${formatCurrency(questRevenue)} + その他${formatCurrency(additional.total)}`;
   $("#summary-cards").innerHTML = summaryCard("予想売上",formatCurrency(totalRevenue),revenueDetail) + summaryCard("予想時給",`${formatCurrency(hourly)}/h`,`${formatNumber(stats.hours)}時間・全報酬込み`) + summaryCard("配達目標",projections.length?`${formatNumber(targetCount)}件`:"未設定",targetDetail) + summaryCard("計画サービス",service?.name||"未設定",`営業日 04:00区切り`);
   $("#dashboard-recommendation").innerHTML = projections.length ? `<div class="period-projection-list">${projections.map(item => `<div class="period-projection"><div><strong>${esc(item.period.title)}</strong><span>${item.basis.source === "confirmed" ? "確定済み" : "未確定・推奨を仮使用"}</span></div><div class="period-projection-numbers"><b>${formatNumber(item.basis.row.count)}件 <span class="judgement">${item.basis.row.judgement}</span></b><small>予想${formatNumber(item.deliveries)}件 / 報酬見込${formatCurrency(item.reward)}</small></div></div>`).join("")}</div>` : '<p class="empty" style="color:#d5ebe6">期間クエストを登録すると推奨目標を表示します。</p>';
-  const dayForecasts = weeklyDayForecasts(state.quests,activePlan(),service,state.settings);
+  const dayForecasts = weeklyDayForecasts(quests,activePlan(),service,state.settings);
   const max = Math.max(1,...dayForecasts.map(item=>item.deliveries));
   $("#dashboard-days").innerHTML = dayForecasts.map(day=>`<div class="bar-row"><span>${DAY_LABELS[day.day]}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,day.deliveries/max*100)}%"></div></div><div class="bar-values"><strong>${formatNumber(day.deliveries)}件</strong><small>${formatNumber(day.hours)}h / ${formatCurrency(day.revenue)}</small></div></div>`).join("");
-  const questSummaries = weeklyQuestSummaries(state.quests,activePlan(),service,state.settings);
+  const questSummaries = weeklyQuestSummaries(quests,activePlan(),service,state.settings);
   $("#dashboard-quests").innerHTML = questSummaries.length ? questSummaries.map(item=>questSummaryCard(item)).join("") : '<p class="empty">対象週のクエストはありません。</p>';
   $$(".add-quest-schedule").forEach(button => button.addEventListener("click", () => addQuestSchedule(button.dataset.questId)));
 }
@@ -692,11 +832,24 @@ function questSummaryCard(item) {
   const maxReward = item.maximum.unlimited ? "上限なし" : formatCurrency(item.maximum.reward);
   const scheduleButton = item.quest.startTime && item.quest.endTime ? `<button class="secondary-button add-quest-schedule" type="button" data-quest-id="${item.quest.id}">時間帯を予定に追加</button>` : "";
   const periodState = item.basis ? ` / ${item.basis.source === "confirmed" ? "選択" : "推奨"}${formatNumber(item.maximum.count)}件` : "";
-  return `<article class="quest-summary ${tone}"><div class="quest-summary-main"><div><span class="badge">${QUEST_KINDS[item.quest.kind]}</span><strong>${esc(item.quest.title)}</strong><p>${formatNumber(item.predictedCount)}件見込み${periodState}</p></div><div class="quest-rewards"><span>最大 ${maxReward}</span><b>見込 ${formatCurrency(item.projectedReward)}</b></div></div>${scheduleButton}</article>`;
+  return `<article class="quest-summary ${tone}"><div class="quest-summary-main"><div><span class="badge">${QUEST_KINDS[item.quest.kind]}</span><strong>${esc(item.quest.title)}</strong><p>${formatNumber(item.predictedCount)}件見込み${periodState}</p>${questTrendBadge(item)}</div><div class="quest-rewards"><span>最大 ${maxReward}</span><b>見込 ${formatCurrency(item.projectedReward)}</b></div></div>${scheduleButton}</article>`;
+}
+
+function questTrendBadge(item) {
+  const previous = previousQuestSummary(item);
+  const maximum = questMaximumForDisplay(item.quest);
+  if (!previous || previous.reward == null || maximum.unlimited) return `<p class="trend neutral">前週なし</p>`;
+  const current = Number(maximum.reward || 0);
+  const diff = current - previous.reward;
+  const pct = previous.reward ? diff / previous.reward * 100 : null;
+  const tone = diff > 0 ? "up" : diff < 0 ? "down" : "neutral";
+  const sign = diff > 0 ? "+" : "";
+  const rate = pct == null ? "" : ` / ${sign}${formatNumber(pct)}%`;
+  return `<p class="trend ${tone}">前週最大 ${formatCurrency(previous.reward)} / ${sign}${formatCurrency(diff)}${rate}</p>`;
 }
 
 function addQuestSchedule(questId) {
-  const quest = state.quests.find(item => item.id === questId);
+  const quest = visibleQuests().find(item => item.id === questId);
   if (!quest?.startTime || !quest?.endTime) return showMessage("このクエストには時間帯が設定されていません。",true);
   const targets = activePlan().workSlots.filter(day => questIncludesPlanDay(quest,activePlan(),day.day));
   if (!targets.length) return showMessage("対象週に追加できる曜日がありません。",true);
