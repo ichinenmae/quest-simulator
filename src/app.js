@@ -317,6 +317,10 @@ function pickerTimeValue(value) {
   return parseTime(value) === null ? "" : normalizeTimeInput(value);
 }
 
+function manualCountValue(day) {
+  return Number(day.manualDeliveryCount) > 0 ? day.manualDeliveryCount : "";
+}
+
 function crossesBusinessBoundary(slot) {
   const start = parseTime(slot.start);
   const end = parseTime(slot.end);
@@ -533,9 +537,9 @@ function renderPlan() {
 
 function dayCard(day, service, weekStartDate) {
   const stats = dayPlanStats(day, service);
-  const slots = day.slots.map((slot,index) => `<div class="slot-row" data-slot="${index}"><label>開始<div class="time-input-pair"><input class="slot-start" type="text" inputmode="numeric" autocomplete="off" placeholder="10:00" value="${esc(slot.start)}"><input class="slot-picker slot-start-picker" type="time" value="${esc(pickerTimeValue(slot.start))}" aria-label="開始時刻を選択"></div></label><span class="separator">〜</span><label>終了<div class="time-input-pair"><input class="slot-end" type="text" inputmode="numeric" autocomplete="off" placeholder="15:00" value="${esc(slot.end)}"><input class="slot-picker slot-end-picker" type="time" value="${esc(pickerTimeValue(slot.end))}" aria-label="終了時刻を選択"></div></label><button class="icon-button remove-slot" aria-label="稼働枠を削除">×</button></div>`).join("");
+  const slots = day.slots.map((slot,index) => `<div class="slot-row" data-slot="${index}"><label>開始<div class="time-input-pair"><input class="slot-start" type="text" inputmode="numeric" autocomplete="off" placeholder="10:00" value="${esc(slot.start)}"><button class="time-picker-button" type="button" data-picker="start" aria-label="開始時刻を選択">◷</button><input class="slot-picker slot-start-picker" type="time" value="${esc(pickerTimeValue(slot.start))}" tabindex="-1" aria-hidden="true"></div></label><span class="separator">〜</span><label>終了<div class="time-input-pair"><input class="slot-end" type="text" inputmode="numeric" autocomplete="off" placeholder="15:00" value="${esc(slot.end)}"><button class="time-picker-button" type="button" data-picker="end" aria-label="終了時刻を選択">◷</button><input class="slot-picker slot-end-picker" type="time" value="${esc(pickerTimeValue(slot.end))}" tabindex="-1" aria-hidden="true"></div></label><button class="icon-button remove-slot" aria-label="稼働枠を削除">×</button></div>`).join("");
   const date = dateForPlanDay(weekStartDate, day.day);
-  return `<article class="day-card ${day.enabled ? "" : "disabled"}" data-day="${day.day}"><div class="day-header"><div><h3>${DAY_LABELS[day.day]}曜日 <span>${formatShortDate(date)}</span></h3><p>${esc(date)}</p></div><label class="switch"><input class="day-enabled" type="checkbox" ${day.enabled ? "checked" : ""}>稼働する</label></div><div class="slot-list">${slots || '<p class="helper">稼働枠がありません。</p>'}</div><button class="secondary-button add-slot" type="button">稼働枠を追加</button><label style="margin-top:12px">予想件数の手動上書き<input class="manual-count" type="number" min="0" step="0.1" placeholder="自動計算" value="${day.manualDeliveryCount ?? ""}"></label>${stats.errors.length ? `<p class="error-text">${stats.errors.map(esc).join("<br>")}</p>` : ""}<div class="day-stats"><span>稼働 <strong>${formatNumber(stats.hours)}h</strong></span><span>予想 <strong>${formatNumber(stats.deliveries)}件</strong></span></div></article>`;
+  return `<article class="day-card ${day.enabled ? "" : "disabled"}" data-day="${day.day}"><div class="day-header"><div><h3>${DAY_LABELS[day.day]}曜日 <span>${formatShortDate(date)}</span></h3><p>${esc(date)}</p></div><label class="switch"><input class="day-enabled" type="checkbox" ${day.enabled ? "checked" : ""}>稼働する</label></div><div class="slot-list">${slots || '<p class="helper">稼働枠がありません。</p>'}</div><button class="secondary-button add-slot" type="button">稼働枠を追加</button><label style="margin-top:12px">予想件数の手動上書き<input class="manual-count" type="number" min="0" step="1" placeholder="自動計算" value="${esc(manualCountValue(day))}"></label>${stats.errors.length ? `<p class="error-text">${stats.errors.map(esc).join("<br>")}</p>` : ""}<div class="day-stats"><span>稼働 <strong>${formatNumber(stats.hours)}h</strong></span><span>予想 <strong>${formatNumber(stats.deliveries)}件</strong></span></div></article>`;
 }
 
 function renderPlanCopyTools() {
@@ -585,7 +589,7 @@ function bindDayCard(card) {
   const day = activePlan().workSlots.find(item => item.day === card.dataset.day);
   card.querySelector(".day-enabled").addEventListener("change", event => { day.enabled = event.target.checked; commit(); renderAll(); });
   card.querySelector(".add-slot").addEventListener("click", () => { day.slots.push({ start:"10:00", end:"15:00" }); renderPlan(); });
-  card.querySelector(".manual-count").addEventListener("change", event => { day.manualDeliveryCount = event.target.value === "" ? null : Math.max(0, Number(event.target.value)); commit(); renderAll(); });
+  card.querySelector(".manual-count").addEventListener("change", event => { const value = Number(event.target.value); day.manualDeliveryCount = event.target.value === "" || value <= 0 ? null : value; commit(); renderAll(); });
   card.querySelectorAll(".slot-row").forEach(row => {
     const index = Number(row.dataset.slot);
     const bindTimeText = (selector, key) => {
@@ -597,6 +601,11 @@ function bindDayCard(card) {
     bindTimeText(".slot-end", "end");
     row.querySelector(".slot-start-picker").addEventListener("change", event => updateSlot(day,index,"start",event.target.value));
     row.querySelector(".slot-end-picker").addEventListener("change", event => updateSlot(day,index,"end",event.target.value));
+    row.querySelectorAll(".time-picker-button").forEach(button => button.addEventListener("click", () => {
+      const picker = row.querySelector(button.dataset.picker === "start" ? ".slot-start-picker" : ".slot-end-picker");
+      if (picker.showPicker) picker.showPicker();
+      else picker.focus();
+    }));
     row.querySelector(".remove-slot").addEventListener("click", () => animateRemoval(row, () => { day.slots.splice(index,1); commit(); renderAll(); }));
   });
 }
